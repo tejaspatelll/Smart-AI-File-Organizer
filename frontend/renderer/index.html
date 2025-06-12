@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart File Organizer</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="bg-gradient">
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-glass">
+      <div class="container-fluid px-4">
+        <div class="navbar-brand d-flex align-items-center">
+          <div class="app-icon me-3">
+            <i class="bi bi-magic"></i>
+          </div>
+          <div>
+            <h5 class="mb-0 fw-bold">Smart Organizer</h5>
+            <small class="text-muted">AI-Powered File Organization</small>
+          </div>
+        </div>
+        
+        <div class="navbar-nav flex-row gap-3">
+          <button id="help-btn" class="btn btn-ghost btn-sm">
+            <i class="bi bi-question-circle me-1"></i>Help
+          </button>
+          <button id="settings-btn" class="btn btn-ghost btn-sm">
+            <i class="bi bi-gear me-1"></i>Settings
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container-fluid p-0">
+      <!-- 1. Welcome/Onboarding View -->
+      <div id="welcome-view" class="view-container">
+        <noscript>
+          <div class="alert alert-warning m-4">
+            <h4>JavaScript Required</h4>
+            <p>This application requires JavaScript to be enabled in your browser.</p>
+          </div>
+        </noscript>
+        <div class="welcome-hero">
+          <div class="container text-center py-5">
+            <div class="welcome-icon mb-4">
+              <i class="bi bi-magic"></i>
+            </div>
+            <h1 class="display-4 fw-bold mb-3">Welcome to Smart Organizer</h1>
+            <p class="lead mb-5">
+              Transform chaos into order with AI-powered file organization that understands your intent.
+            </p>
+            
+            <!-- Quick Start Options -->
+            <div class="row justify-content-center mb-5">
+              <div class="col-lg-8">
+                <div class="row g-4">
+                  <div class="col-md-4">
+                    <div class="quick-start-card" data-action="quick">
+                      <i class="bi bi-lightning-charge"></i>
+                      <h5>Quick Organize</h5>
+                      <p>Let AI organize your files automatically</p>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="quick-start-card" data-action="custom">
+                      <i class="bi bi-chat-dots"></i>
+                      <h5>Custom Prompt</h5>
+                      <p>Tell us exactly how you want files organized</p>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="quick-start-card" data-action="template">
+                      <i class="bi bi-grid-3x3-gap"></i>
+                      <h5>Use Template</h5>
+                      <p>Choose from proven organization patterns</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <button id="get-started-btn" class="btn btn-primary btn-lg px-5">
+              <i class="bi bi-folder2-open me-2"></i>Get Started
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Directory Selection View -->
+      <div id="directory-view" class="view-container d-none">
+        <div class="container py-5">
+          <div class="row justify-content-center">
+            <div class="col-lg-8">
+              <div class="step-header mb-5">
+                <div class="step-indicator">
+                  <span class="step-number">1</span>
+                </div>
+                <h2 class="h1 fw-bold mb-3">Choose Your Folder</h2>
+                <p class="lead">Select the folder you'd like to organize. We'll scan and analyze all files within it.</p>
+          </div>
+              
+              <div class="folder-selector">
+                <div class="folder-drop-zone" id="folder-drop-zone">
+                  <i class="bi bi-folder-plus"></i>
+                  <h4>Drop a folder here</h4>
+                  <p>or</p>
+                  <button id="select-folder-btn" class="btn btn-primary">
+                    <i class="bi bi-folder2-open me-2"></i>Browse for Folder
+                  </button>
+        </div>
+
+                <div id="selected-folder-info" class="selected-folder-info d-none">
+                  <div class="d-flex align-items-center">
+                    <i class="bi bi-folder-fill text-primary me-3"></i>
+                    <div class="flex-grow-1">
+                      <h5 id="folder-name" class="mb-1"></h5>
+                      <p id="folder-path" class="text-muted mb-0"></p>
+                    </div>
+                    <button id="change-folder-btn" class="btn btn-outline-secondary btn-sm">Change</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex justify-content-between mt-5">
+                <button id="back-to-welcome-btn" class="btn btn-ghost">
+                  <i class="bi bi-arrow-left me-2"></i>Back
+                </button>
+                <button id="continue-to-method-btn" class="btn btn-primary" disabled>
+                  Continue<i class="bi bi-arrow-right ms-2"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Organization Method View -->
+      <div id="method-view" class="view-container d-none">
+        <div class="container py-5">
+          <div class="row justify-content-center">
+            <div class="col-lg-10">
+              <div class="step-header mb-5">
+                <div class="step-indicator">
+                  <span class="step-number">2</span>
+                </div>
+                <h2 class="h1 fw-bold mb-3">How Should We Organize?</h2>
+                <p class="lead">Choose your preferred organization method. You can always customize further.</p>
+              </div>
+              
+              <!-- Organization Method Tabs -->
+              <div class="method-tabs mb-4">
+                <nav>
+                  <div class="nav nav-pills nav-fill" id="method-tab" role="tablist">
+                    <button class="nav-link active" id="quick-tab" data-bs-toggle="pill" data-bs-target="#quick-method">
+                      <i class="bi bi-lightning-charge"></i>
+                      Quick & Smart
+                    </button>
+                    <button class="nav-link" id="custom-tab" data-bs-toggle="pill" data-bs-target="#custom-method">
+                      <i class="bi bi-chat-dots"></i>
+                      Custom Prompt
+                    </button>
+                    <button class="nav-link" id="template-tab" data-bs-toggle="pill" data-bs-target="#template-method">
+                      <i class="bi bi-grid-3x3-gap"></i>
+                      Templates
+                    </button>
+                    <button class="nav-link" id="advanced-tab" data-bs-toggle="pill" data-bs-target="#advanced-method">
+                      <i class="bi bi-sliders"></i>
+                      Advanced
+                    </button>
+                  </div>
+                </nav>
+              </div>
+              
+              <div class="tab-content" id="method-content">
+                <!-- Quick Method -->
+                <div class="tab-pane fade show active" id="quick-method">
+                  <div class="method-card">
+                    <div class="text-center py-4">
+                      <i class="bi bi-lightning-charge method-icon text-warning"></i>
+                      <h4 class="mt-3 mb-3">AI-Powered Smart Organization</h4>
+                      <p class="lead mb-4">Let our AI analyze your files and create the perfect organization structure automatically.</p>
+                      
+                      <div class="smart-features">
+                        <div class="row g-3">
+                          <div class="col-md-4">
+                            <div class="feature-item">
+                              <i class="bi bi-eye"></i>
+                              <span>Content Analysis</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="feature-item">
+                              <i class="bi bi-puzzle"></i>
+                              <span>Smart Grouping</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <div class="feature-item">
+                              <i class="bi bi-arrow-repeat"></i>
+                              <span>Duplicate Detection</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Custom Prompt Method -->
+                <div class="tab-pane fade" id="custom-method">
+                  <div class="method-card">
+                    <div class="py-4">
+                      <div class="text-center mb-4">
+                        <i class="bi bi-chat-dots method-icon text-primary"></i>
+                        <h4 class="mt-3 mb-3">Describe Your Vision</h4>
+                        <p class="lead">Tell us exactly how you want your files organized in natural language.</p>
+                      </div>
+                      
+                      <div class="custom-prompt-section">
+                        <div class="prompt-input-group">
+                          <label for="custom-prompt" class="form-label fw-semibold">Organization Instructions</label>
+                          <textarea 
+                            id="custom-prompt" 
+                            class="form-control form-control-lg" 
+                            rows="4" 
+                            placeholder="Example: 'Organize by project type, then by date. Put all invoices in a separate folder. Group photos by events and year. Keep work documents separate from personal files.'"
+                          ></textarea>
+                          <div class="form-text">
+                            <i class="bi bi-lightbulb text-warning me-1"></i>
+                            Be specific about grouping criteria, folder names, and any special requirements.
+                          </div>
+                        </div>
+                        
+                        <div class="prompt-suggestions mt-4">
+                          <h6 class="fw-semibold mb-3">Popular Prompts</h6>
+                          <div class="row g-2">
+                            <div class="col-md-6">
+                              <button class="btn btn-outline-secondary btn-sm w-100 text-start prompt-suggestion" 
+                                      data-prompt="Organize by file type, then by date modified. Create separate folders for work and personal documents.">
+                                <i class="bi bi-calendar3 me-2"></i>By Type & Date
+                              </button>
+                            </div>
+                            <div class="col-md-6">
+                              <button class="btn btn-outline-secondary btn-sm w-100 text-start prompt-suggestion" 
+                                      data-prompt="Group by project. Within each project, separate documents, images, and code files. Archive old projects.">
+                                <i class="bi bi-kanban me-2"></i>By Project
+                              </button>
+                            </div>
+                            <div class="col-md-6">
+                              <button class="btn btn-outline-secondary btn-sm w-100 text-start prompt-suggestion" 
+                                      data-prompt="Separate work from personal. Within work, organize by client/company. Keep important documents easily accessible.">
+                                <i class="bi bi-briefcase me-2"></i>Work vs Personal
+                              </button>
+                            </div>
+                            <div class="col-md-6">
+                              <button class="btn btn-outline-secondary btn-sm w-100 text-start prompt-suggestion" 
+                                      data-prompt="Organize photos by events and year. Put screenshots in a separate folder. Group documents by importance.">
+                                <i class="bi bi-images me-2"></i>Media & Docs
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Template Method -->
+                <div class="tab-pane fade" id="template-method">
+                  <div class="method-card">
+                    <div class="py-4">
+                      <div class="text-center mb-4">
+                        <i class="bi bi-grid-3x3-gap method-icon text-success"></i>
+                        <h4 class="mt-3 mb-3">Choose a Template</h4>
+                        <p class="lead">Select from proven organization patterns designed for different use cases.</p>
+            </div>
+            
+                      <div class="templates-grid">
+                        <div class="row g-4">
+                          <div class="col-lg-6">
+                            <div class="template-card" data-template="creative">
+                              <div class="template-header">
+                                <i class="bi bi-palette"></i>
+                                <h5>Creative Professional</h5>
+                              </div>
+                              <div class="template-description">
+                                <p>Perfect for designers, photographers, and creative professionals</p>
+                                <ul class="template-features">
+                                  <li>Projects folder structure</li>
+                                  <li>Client-based organization</li>
+                                  <li>Asset libraries</li>
+                                  <li>Archive system</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="col-lg-6">
+                            <div class="template-card" data-template="business">
+                              <div class="template-header">
+                                <i class="bi bi-briefcase"></i>
+                                <h5>Business Professional</h5>
+                              </div>
+                              <div class="template-description">
+                                <p>Structured approach for business documents and files</p>
+                                <ul class="template-features">
+                                  <li>Department-based folders</li>
+                                  <li>Date-organized archives</li>
+                                  <li>Important documents section</li>
+                                  <li>Meeting & presentation files</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="col-lg-6">
+                            <div class="template-card" data-template="student">
+                              <div class="template-header">
+                                <i class="bi bi-mortarboard"></i>
+                                <h5>Student</h5>
+                              </div>
+                              <div class="template-description">
+                                <p>Academic-focused organization for students and researchers</p>
+                                <ul class="template-features">
+                                  <li>Subject-based folders</li>
+                                  <li>Academic year organization</li>
+                                  <li>Research materials</li>
+                                  <li>Assignment tracking</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="col-lg-6">
+                            <div class="template-card" data-template="personal">
+                              <div class="template-header">
+                                <i class="bi bi-house"></i>
+                                <h5>Personal Life</h5>
+                              </div>
+                              <div class="template-description">
+                                <p>Home organization for personal documents and memories</p>
+                                <ul class="template-features">
+                                  <li>Life category folders</li>
+                                  <li>Photo organization by events</li>
+                                  <li>Important documents</li>
+                                  <li>Hobby and interest files</li>
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Advanced Method -->
+                <div class="tab-pane fade" id="advanced-method">
+                  <div class="method-card">
+                    <div class="py-4">
+                      <div class="text-center mb-4">
+                        <i class="bi bi-sliders method-icon text-info"></i>
+                        <h4 class="mt-3 mb-3">Advanced Configuration</h4>
+                        <p class="lead">Fine-tune every aspect of the organization process.</p>
+                      </div>
+                      
+                      <div class="advanced-options">
+                        <div class="row g-4">
+                          <div class="col-md-6">
+                            <div class="option-group">
+                              <h6 class="fw-semibold mb-3">File Types</h6>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="include-images" checked>
+                                <label class="form-check-label" for="include-images">Images & Photos</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="include-documents" checked>
+                                <label class="form-check-label" for="include-documents">Documents & PDFs</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="include-media" checked>
+                                <label class="form-check-label" for="include-media">Videos & Audio</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="include-code" checked>
+                                <label class="form-check-label" for="include-code">Code Files</label>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="col-md-6">
+                            <div class="option-group">
+                              <h6 class="fw-semibold mb-3">Organization Rules</h6>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="detect-duplicates" checked>
+                                <label class="form-check-label" for="detect-duplicates">Detect Duplicates</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="preserve-structure" checked>
+                                <label class="form-check-label" for="preserve-structure">Preserve Existing Structure</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="smart-naming">
+                                <label class="form-check-label" for="smart-naming">Smart Folder Naming</label>
+                              </div>
+                              <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="create-archive">
+                                <label class="form-check-label" for="create-archive">Create Archive Folders</label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div class="priority-settings mt-4">
+                          <h6 class="fw-semibold mb-3">Priority Thresholds</h6>
+                          <div class="row g-3">
+                            <div class="col-md-4">
+                              <label for="min-confidence" class="form-label">Minimum Confidence</label>
+                              <input type="range" class="form-range" id="min-confidence" min="0" max="100" value="50">
+                              <div class="form-text"><span id="confidence-value">50</span>%</div>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="min-priority" class="form-label">Minimum Priority</label>
+                              <select class="form-select" id="min-priority">
+                                <option value="1">All Files</option>
+                                <option value="2">Low Priority</option>
+                                <option value="3" selected>Medium Priority</option>
+                                <option value="4">High Priority</option>
+                                <option value="5">Highest Priority</option>
+                              </select>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="max-files" class="form-label">Max Files to Process</label>
+                              <input type="number" class="form-control" id="max-files" value="1000" min="10" max="10000">
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="d-flex justify-content-between mt-5">
+                <button id="back-to-directory-btn" class="btn btn-ghost">
+                  <i class="bi bi-arrow-left me-2"></i>Back
+                </button>
+                <button id="start-organization-btn" class="btn btn-primary btn-lg">
+                  <i class="bi bi-play-circle me-2"></i>Start Organization
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Processing View (Enhanced) -->
+      <div id="processing-view" class="view-container d-none">
+        <div class="container py-5">
+          <div class="row justify-content-center">
+            <div class="col-lg-8">
+              <div class="processing-card">
+                <div class="text-center mb-4">
+                  <div class="processing-spinner">
+                    <div class="spinner-ring"></div>
+                    <i class="bi bi-magic processing-icon"></i>
+                  </div>
+                  <h3 id="processing-title" class="mt-4 mb-2">Analyzing Your Files</h3>
+                  <p id="processing-subtitle" class="text-muted">This may take a moment while we understand your content...</p>
+                </div>
+                
+                <div class="progress-section">
+                  <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         id="processing-progress" 
+                         role="progressbar" 
+                         style="width: 0%">
+                    </div>
+                  </div>
+                  <div class="d-flex justify-content-between">
+                    <span id="processing-status" class="small text-muted">Preparing...</span>
+                    <span id="processing-percentage" class="small text-muted">0%</span>
+                  </div>
+                </div>
+                
+                <div class="processing-details mt-4">
+                  <div class="row g-3">
+                    <div class="col-4">
+                      <div class="stat-mini">
+                        <span id="files-scanned" class="stat-number">0</span>
+                        <span class="stat-label">Files Scanned</span>
+                      </div>
+                    </div>
+                    <div class="col-4">
+                      <div class="stat-mini">
+                        <span id="files-analyzed" class="stat-number">0</span>
+                        <span class="stat-label">AI Analyzed</span>
+                      </div>
+                    </div>
+                    <div class="col-4">
+                      <div class="stat-mini">
+                        <span id="duplicates-found" class="stat-number">0</span>
+                        <span class="stat-label">Duplicates Found</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Results Preview View (Enhanced) -->
+      <div id="results-view" class="view-container d-none">
+        <div class="container-fluid py-4">
+          <div class="results-header mb-4">
+            <div class="container">
+              <div class="row align-items-center">
+                <div class="col-lg-8">
+                  <div class="step-indicator mb-2">
+                    <span class="step-number">3</span>
+                  </div>
+                  <h2 class="h1 fw-bold mb-2">Review Your Organization Plan</h2>
+                  <p class="lead mb-0">AI has analyzed your files and created an organization plan. Review and customize before applying.</p>
+                </div>
+                <div class="col-lg-4 text-lg-end">
+                  <div class="plan-stats">
+                    <div class="stat-inline">
+                      <span id="total-files-stat" class="stat-number">0</span>
+                      <span class="stat-label">Files to Organize</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Enhanced filtering and controls -->
+          <div class="results-controls mb-4">
+            <div class="container">
+              <div class="control-panel">
+                <div class="row align-items-center mb-3">
+                  <div class="col-lg-6">
+                    <div class="search-section">
+                      <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="file-search" placeholder="Search files by name or path...">
+                        <button class="btn btn-outline-secondary" type="button" id="clear-search">
+                          <i class="bi bi-x-lg"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-6 text-lg-end">
+                    <div class="view-toggle-group">
+                      <label class="view-toggle-label">View:</label>
+                      <div class="btn-group btn-group-sm" role="group">
+                        <input type="radio" class="btn-check" name="view-mode" id="view-table" value="table" checked>
+                        <label class="btn btn-outline-primary" for="view-table">
+                          <i class="bi bi-table me-1"></i>Table
+                        </label>
+                        <input type="radio" class="btn-check" name="view-mode" id="view-cards" value="cards">
+                        <label class="btn btn-outline-primary" for="view-cards">
+                          <i class="bi bi-grid me-1"></i>Cards
+                        </label>
+                        <input type="radio" class="btn-check" name="view-mode" id="view-grouped" value="grouped">
+                        <label class="btn btn-outline-primary" for="view-grouped">
+                          <i class="bi bi-collection me-1"></i>Grouped
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="row align-items-center">
+                  <div class="col-lg-8">
+                    <div class="filter-group">
+                      <div class="filter-section">
+                        <label class="filter-label">Priority:</label>
+                        <div class="btn-group btn-group-sm filter-buttons" role="group">
+                          <input type="radio" class="btn-check" name="priority-filter" id="priority-all-new" value="all" checked>
+                          <label class="btn btn-outline-secondary" for="priority-all-new">All</label>
+                          <input type="radio" class="btn-check" name="priority-filter" id="priority-high-new" value="high">
+                          <label class="btn btn-outline-secondary" for="priority-high-new">High</label>
+                          <input type="radio" class="btn-check" name="priority-filter" id="priority-medium-new" value="medium">
+                          <label class="btn btn-outline-secondary" for="priority-medium-new">Medium</label>
+                          <input type="radio" class="btn-check" name="priority-filter" id="priority-low-new" value="low">
+                          <label class="btn btn-outline-secondary" for="priority-low-new">Low</label>
+                        </div>
+                      </div>
+                      
+                      <div class="filter-section">
+                        <label class="filter-label">Confidence:</label>
+                        <div class="btn-group btn-group-sm filter-buttons" role="group">
+                          <input type="radio" class="btn-check" name="confidence-filter" id="confidence-all-new" value="all" checked>
+                          <label class="btn btn-outline-secondary" for="confidence-all-new">All</label>
+                          <input type="radio" class="btn-check" name="confidence-filter" id="confidence-high-new" value="high">
+                          <label class="btn btn-outline-secondary" for="confidence-high-new">80%+</label>
+                          <input type="radio" class="btn-check" name="confidence-filter" id="confidence-medium-new" value="medium">
+                          <label class="btn btn-outline-secondary" for="confidence-medium-new">50-80%</label>
+                          <input type="radio" class="btn-check" name="confidence-filter" id="confidence-low-new" value="low">
+                          <label class="btn btn-outline-secondary" for="confidence-low-new"><50%</label>
+                        </div>
+                      </div>
+                      
+                      <div class="filter-section">
+                        <div class="form-check form-switch">
+                          <input class="form-check-input" type="checkbox" id="show-duplicates-new" checked>
+                          <label class="form-check-label" for="show-duplicates-new">Show Duplicates</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-4 text-lg-end">
+                    <div class="action-buttons">
+                      <div class="dropdown me-2">
+                        <button class="btn btn-outline-info btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                          <i class="bi bi-lightning-charge me-1"></i>Quick Actions
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li><a class="dropdown-item" href="#" id="approve-high-confidence">
+                            <i class="bi bi-check-circle me-2"></i>Approve High Confidence (80%+)
+                          </a></li>
+                          <li><a class="dropdown-item" href="#" id="select-by-type">
+                            <i class="bi bi-file-earmark me-2"></i>Select by File Type
+                          </a></li>
+                          <li><a class="dropdown-item" href="#" id="group-similar">
+                            <i class="bi bi-collection me-2"></i>Group Similar Files
+                          </a></li>
+                          <li><hr class="dropdown-divider"></li>
+                          <li><a class="dropdown-item" href="#" id="export-plan">
+                            <i class="bi bi-download me-2"></i>Export Plan
+                          </a></li>
+                        </ul>
+                      </div>
+                      <button id="select-all-new-btn" class="btn btn-outline-primary btn-sm me-2">
+                        <i class="bi bi-check-all me-1"></i>Select All
+                      </button>
+                      <button id="deselect-all-new-btn" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-x-lg me-1"></i>Clear All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Results content with multiple view modes -->
+          <div class="results-content">
+            <div class="container">
+              <div class="plan-summary mb-4" id="plan-summary-new"></div>
+              
+              <!-- Table View -->
+              <div id="table-view" class="view-mode active">
+                <div class="results-table-container">
+                  <div class="table-responsive">
+                    <table class="table results-table">
+                      <thead>
+                        <tr>
+                          <th style="width: 40px;">
+                            <input class="form-check-input" type="checkbox" id="select-all-checkbox-new">
+                    </th>
+                          <th style="width: 200px;">File</th>
+                          <th style="width: 120px;">Priority/Conf.</th>
+                          <th style="width: 350px;">Movement: FROM → TO</th>
+                          <th style="width: 300px;">AI Reasoning</th>
+                  </tr>
+                </thead>
+                      <tbody id="results-table-body">
+                        <!-- Populated by JS -->
+                </tbody>
+              </table>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Card View -->
+              <div id="card-view" class="view-mode d-none">
+                <div id="results-cards-container" class="row g-3">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+              
+              <!-- Grouped View -->
+              <div id="grouped-view" class="view-mode d-none">
+                <div id="results-groups-container">
+                  <!-- Populated by JS -->
+                </div>
+              </div>
+              
+              <div class="results-footer mt-4">
+                <div class="row align-items-center">
+                  <div class="col-lg-6">
+                    <p id="selection-summary" class="mb-0 text-muted">
+                      No files selected
+                    </p>
+                  </div>
+                  <div class="col-lg-6 text-lg-end">
+                    <button id="back-to-method-btn" class="btn btn-ghost me-3">
+                      <i class="bi bi-arrow-left me-2"></i>Back
+                    </button>
+                    <button id="apply-organization-btn" class="btn btn-primary btn-lg" disabled>
+                      <i class="bi bi-magic me-2"></i>Apply Organization
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Success View (Enhanced) -->
+      <div id="success-view" class="view-container d-none">
+        <div class="container py-5">
+          <div class="row justify-content-center">
+            <div class="col-lg-8">
+              <div class="success-card">
+                <div class="text-center mb-5">
+                  <div class="success-icon mb-4">
+                    <i class="bi bi-check-circle-fill"></i>
+                  </div>
+                  <h2 class="h1 fw-bold mb-3">Organization Complete!</h2>
+                  <p id="success-message" class="lead">
+                    Successfully organized your files with AI-powered intelligence.
+                  </p>
+                </div>
+
+                <div class="success-stats mb-5">
+                  <div class="row g-4">
+                    <div class="col-md-3">
+                      <div class="stat-card-success">
+                        <div id="files-moved-stat" class="stat-number">0</div>
+                        <div class="stat-label">Files Organized</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card-success">
+                        <div id="folders-created-stat" class="stat-number">0</div>
+                        <div class="stat-label">Folders Created</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card-success">
+                        <div id="duplicates-handled-stat" class="stat-number">0</div>
+                        <div class="stat-label">Duplicates Handled</div>
+                      </div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="stat-card-success">
+                        <div id="confidence-avg-stat" class="stat-number">0%</div>
+                        <div class="stat-label">Avg Confidence</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="success-actions text-center">
+                  <button id="view-folder-btn" class="btn btn-primary btn-lg me-3">
+                    <i class="bi bi-folder2-open me-2"></i>View Organized Folder
+                  </button>
+                  <button id="undo-organization-btn" class="btn btn-outline-warning btn-lg me-3">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i>Undo Changes
+              </button>
+                  <button id="organize-another-btn" class="btn btn-ghost btn-lg">
+                    <i class="bi bi-plus-circle me-2"></i>Organize Another Folder
+              </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">How Smart Organizer Works</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <!-- Help content will be added via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Settings</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <!-- Settings content will be added via JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Enhanced AI Reasoning Modal -->
+    <div class="modal fade" id="reasoningModal" tabindex="-1" aria-labelledby="reasoningModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="reasoningModalLabel">
+              <i class="bi bi-brain"></i>
+              AI Organization Reasoning
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="file-context">
+              <div class="file-context-title">File Details</div>
+              <div class="file-context-details" id="modal-file-details">
+                <!-- Populated by JavaScript -->
+          </div>
+        </div>
+
+            <div class="reasoning-content">
+              <p class="reasoning-text" id="modal-reasoning-text">
+                <!-- Populated by JavaScript -->
+              </p>
+        </div>
+
+            <div class="move-flow-container">
+              <div class="source-highlight">
+                <div class="path-preview">
+                  <i class="bi bi-folder path-folder-icon"></i>
+                  <span class="path-text" id="modal-source-path">...</span>
+                </div>
+              </div>
+              <div class="move-arrow-enhanced">
+                <i class="bi bi-arrow-right"></i>
+              </div>
+              <div class="destination-highlight">
+                <div class="path-preview">
+                  <i class="bi bi-folder-plus path-folder-icon"></i>
+                  <span class="path-text" id="modal-destination-path">...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="approve-this-move">
+              <i class="bi bi-check-circle me-2"></i>Approve This Move
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html> 
