@@ -1,0 +1,13 @@
+{
+  "name": "files-manager-root",
+  "version": "1.0.0",
+  "description": "Root package.json for Smart File Organizer",
+  "main": "main.js",
+  "scripts": {
+    "start": "npm start --prefix frontend",
+    "dev": "npm run dev --prefix frontend"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
+} 
