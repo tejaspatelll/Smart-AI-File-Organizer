@@ -30,6 +30,7 @@ import hashlib
 import time
 import logging
 import concurrent.futures
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -45,7 +46,7 @@ from contextlib import asynccontextmanager
 
 # Enhanced utilities and caching
 from .utils import read_basic_metadata, extract_text_from_pdf, extract_text_from_docx
-from .cache import SQLiteCache
+# from .enhanced_cache import SQLiteCache  # Async version - not compatible
 
 # Production-grade logging
 logger = logging.getLogger(__name__)
@@ -114,6 +115,59 @@ SKIP_DIRECTORIES = {
     'venv', 'env', '.env', 'virtualenv', '.virtualenv',
     'dist', 'build', '.next', '.nuxt', 'coverage'
 }
+
+
+class SQLiteCache:
+    """Simple synchronous SQLite cache for backward compatibility."""
+    
+    def __init__(self, db_path: Path | str):
+        self.db_path = Path(db_path)
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize the database."""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS cache (
+                        key TEXT PRIMARY KEY,
+                        value TEXT,
+                        created_at REAL
+                    )
+                ''')
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to initialize cache database: {e}")
+    
+    def get(self, key: str) -> Any:
+        """Get value from cache."""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute('SELECT value FROM cache WHERE key = ?', (key,))
+                row = cursor.fetchone()
+                if row:
+                    return json.loads(row[0])
+        except Exception as e:
+            logger.debug(f"Cache get failed for key {key}: {e}")
+        return None
+    
+    def set(self, key: str, value: Any) -> bool:
+        """Set value in cache."""
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                value_json = json.dumps(value, default=str)
+                conn.execute(
+                    'INSERT OR REPLACE INTO cache (key, value, created_at) VALUES (?, ?, ?)',
+                    (key, value_json, time.time())
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.debug(f"Cache set failed for key {key}: {e}")
+            return False
 
 
 @dataclass
@@ -752,7 +806,7 @@ class GeminiClassifier:
         # Caching support – can be disabled for debugging or when working on
         # very small folders.
         # ------------------------------------------------------------------
-        self.cache: SQLiteCache | None = SQLiteCache() if enable_cache else None
+        self.cache: SQLiteCache | None = SQLiteCache(Path("smart_organizer_cache.db")) if enable_cache else None
 
     # ------------------------------------------------------------------
     # Utility helpers
@@ -2028,7 +2082,7 @@ class IntelligentAIClassifier:
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(AI_MODELS['gemini']['model'])
-        self.cache: SQLiteCache | None = SQLiteCache() if enable_cache else None
+        self.cache: SQLiteCache | None = SQLiteCache(Path("smart_organizer_intelligent_cache.db")) if enable_cache else None
         
         # Configuration for intelligent decisions
         self.high_confidence_threshold = 0.85

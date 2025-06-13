@@ -190,7 +190,7 @@ class AdvancedAIProvider:
         self.primary_provider = None
         self.fallback_providers = []
         self.metrics = ProcessingMetrics()
-        self.cache = SQLiteCache()
+        self.cache = SQLiteCache(Path("smart_organizer_enhanced_cache.db"))
         
         # Initialize available providers
         self._initialize_providers()
