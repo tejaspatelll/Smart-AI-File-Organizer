@@ -86,7 +86,7 @@ Celebration of completion with statistics and easy access to organized folder, u
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/smart-file-organizer.git
+   git clone https://github.com/tejaspatelll/smart-file-organizer.git
    cd smart-file-organizer
    ```
 
