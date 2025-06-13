@@ -1,0 +1,51 @@
+# Smart File Organizer - Enhanced Backend Requirements
+# Production-grade dependencies for 100x improved features
+
+# Core AI Providers
+google-generativeai>=0.7.0
+openai>=1.14.0
+anthropic>=0.18.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Document Processing
+PyPDF2>=3.0.1
+python-docx>=0.8.11
+
+# Data Science & ML
+numpy>=1.24.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+
+# Async & Performance
+aiofiles>=23.1.0
+asyncio-throttle>=1.0.2
+asyncpg>=0.28.0  # for PostgreSQL if needed
+
+# Caching & Database
+redis>=4.5.0
+sqlalchemy>=2.0.0
+
+# Progress & Monitoring
+tqdm>=4.65.0
+psutil>=5.9.0
+
+# Network & HTTP
+aiohttp>=3.8.0
+httpx>=0.24.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+typer>=0.9.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Development (optional)
+black>=23.0.0
+isort>=5.12.0
+mypy>=1.4.0 

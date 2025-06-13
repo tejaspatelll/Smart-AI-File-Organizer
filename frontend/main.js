@@ -78,6 +78,11 @@ function runOrganizer(dirPath, operation = 'plan', options = {}) {
           args.push('--include-duplicates');
         }
         
+        // Add intelligent AI classifier by default for better reliability
+        if (options.useIntelligent !== false) {  // Default to true unless explicitly disabled
+          args.push('--intelligent');
+        }
+        
         // Add custom prompt support
         if (options.customPrompt) {
           args.push('--prompt', options.customPrompt);

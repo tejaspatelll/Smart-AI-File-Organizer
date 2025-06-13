@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from .organizer import DirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier
+from .organizer import DirectoryScanner, EnhancedDirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier, IntelligentAIClassifier, EnhancedFileInfo, FileInfo
 
 class ProgressReporter:
     """A simple class to report progress back to the Electron app via stderr."""
@@ -56,6 +56,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=50, help="Limit for undo operations")
     parser.add_argument("--prompt", type=str, help="Custom organization prompt")
     parser.add_argument("--template", type=str, choices=["creative", "business", "student", "personal"], help="Organization template")
+    parser.add_argument("--intelligent", action="store_true", help="Use intelligent AI classifier with confidence-based decisions and folder preservation")
     args = parser.parse_args()
 
     root_path = Path(args.path).expanduser().resolve()
@@ -87,18 +88,65 @@ def main() -> None:
     # --- Plan generation ---
     # Report that we are starting the process
     progress_reporter = ProgressReporter(total_steps=2) # Scan and Classify are two main steps
-    progress_reporter.report(0, 1, "Starting file scan...", "scan")
+    progress_reporter.report(0, 1, "Starting enhanced file scan...", "scan")
 
-    scanner = DirectoryScanner(root_path)
-    files = scanner.scan(progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "scan"))
+    # Use EnhancedDirectoryScanner for better performance and features
+    scanner = EnhancedDirectoryScanner(root_path, max_workers=4)
+    
+    # Convert to async scanning if available, otherwise fall back to sync scan
+    try:
+        import asyncio
+        files = asyncio.run(scanner.scan_async(progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "scan")))
+        # Keep EnhancedFileInfo objects - no conversion needed for better features
+        # files = [FileInfo(path=f.path, metadata=f.metadata, category=f.category, suggestion=f.suggestion) for f in files]
+        print(f"✅ Enhanced scanning completed: {len(files)} files processed", file=sys.stderr)
+    except Exception as e:
+        print(f"Enhanced scanning failed ({e}), falling back to legacy scanner", file=sys.stderr)
+        # Fallback to legacy scanner
+        legacy_scanner = DirectoryScanner(root_path)
+        files = legacy_scanner.scan(progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "scan"))
+        scanner = legacy_scanner  # For compatibility with duplicate detection
 
     classifier = None
     if os.getenv("GEMINI_API_KEY"):
         try:
             progress_reporter.report(1, 1, "Starting AI classification...", "classify")
             
+            # Use IntelligentAIClassifier if --intelligent flag is specified
+            if args.intelligent:
+                classifier = IntelligentAIClassifier()
+                print("🧠 Using Intelligent AI Classifier with confidence-based decisions and folder preservation", file=sys.stderr)
+                
+                # Analyze existing folder structure for intelligent decisions
+                print("📁 Analyzing existing folder structure for preservation...", file=sys.stderr)
+                existing_folders = {}
+                if hasattr(scanner, 'get_scan_metrics'):
+                    # For enhanced scanner, get folder analysis from the scanner
+                    folder_analysis = {
+                        'existing_folders': set(f.path.parent.name for f in files if f.path.parent.name != f.path.parents[1].name),
+                        'folder_file_counts': {},
+                        'well_organized_folders': set(),
+                        'preservation_candidates': set()
+                    }
+                    
+                    # Count files per folder
+                    for f in files:
+                        folder = f.path.parent.name
+                        if folder != f.path.parents[1].name:  # Not in root
+                            folder_analysis['folder_file_counts'][folder] = folder_analysis['folder_file_counts'].get(folder, 0) + 1
+                    
+                    # Mark well-organized folders (5+ files)
+                    for folder, count in folder_analysis['folder_file_counts'].items():
+                        if count >= 5:
+                            folder_analysis['well_organized_folders'].add(folder)
+                            folder_analysis['preservation_candidates'].add(folder)
+                    
+                    existing_folders = folder_analysis
+                    print(f"📊 Folder analysis: {len(folder_analysis['preservation_candidates'])} folders marked for preservation", file=sys.stderr)
+                
+                files = classifier.classify_with_intelligence(files, existing_folders, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
             # Use CustomPromptClassifier if prompt or template specified
-            if args.prompt or args.template:
+            elif args.prompt or args.template:
                 classifier = CustomPromptClassifier()
                 if args.prompt:
                     classifier.set_custom_prompt(args.prompt)

@@ -120,6 +120,11 @@ For power users and automation, Smart File Organizer includes a sophisticated co
 python -m backend.cli --path /path/to/folder
 ```
 
+### Intelligent AI Organization (Recommended)
+```bash
+python -m backend.cli --path /path/to/folder --intelligent
+```
+
 ### Custom Prompts
 ```bash
 python -m backend.cli --path /path/to/folder --prompt "Organize by project and date, separate work from personal" --template "Creative, Business, Student, Personal"
