@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict
 from dotenv import load_dotenv
 
-from .organizer import DirectoryScanner, EnhancedDirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier, IntelligentAIClassifier, EnhancedFileInfo, FileInfo
+from backend.organizer import DirectoryScanner, EnhancedDirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier, IntelligentAIClassifier, EnhancedFileInfo, FileInfo
 
 load_dotenv()
 

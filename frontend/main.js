@@ -2,6 +2,81 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const Store = require('electron-store');
+const prompt = require('electron-prompt');
+
+// Persistent store for configuration such as API keys
+const store = new Store({
+  name: 'smart-file-organizer',
+  encryptionKey: undefined // Optionally set an encryption key
+});
+
+async function ensureApiKey() {
+  let apiKey = store.get('geminiApiKey');
+  if (!apiKey) {
+    const result = await prompt({
+      title: 'Gemini API Key Required',
+      label: 'Enter your Gemini API Key:',
+      inputAttrs: { type: 'password', placeholder: 'AIza...' },
+      height: 150,
+      width: 500,
+      type: 'input',
+      resizable: false,
+    });
+
+    if (result === null || result.trim() === '') {
+      dialog.showErrorBox('API Key Required', 'A valid Gemini API Key is required for Smart File Organizer to function. The application will now quit.');
+      app.quit();
+      return false;
+    }
+
+    apiKey = result.trim();
+    store.set('geminiApiKey', apiKey);
+  }
+
+  // Expose to backend process via environment variable
+  process.env.GEMINI_API_KEY = apiKey;
+  return true;
+}
+
+function createSettingsWindow() {
+  const settingsWin = new BrowserWindow({
+    width: 500,
+    height: 300,
+    parent: BrowserWindow.getFocusedWindow(),
+    modal: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+}
+
+// IPC handlers for settings operations
+ipcMain.handle('settings:getApiKey', () => {
+  return store.get('geminiApiKey') || '';
+});
+
+ipcMain.handle('settings:setApiKey', (event, newKey) => {
+  if (newKey && newKey.trim()) {
+    store.set('geminiApiKey', newKey.trim());
+    process.env.GEMINI_API_KEY = newKey.trim();
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('settings:deleteApiKey', () => {
+  store.delete('geminiApiKey');
+  delete process.env.GEMINI_API_KEY;
+  return true;
+});
+
+ipcMain.on('settings:open', () => {
+  createSettingsWindow();
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -25,8 +100,36 @@ function createWindow() {
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('force-gpu-mem-available-mb', '1024');   // Upped from 512MB
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Ensure API key exists before launching main window
+  const ok = await ensureApiKey();
+  if (!ok) return; // Application quit if key not provided
+
   const mainWindow = createWindow();
+
+  // Build basic application menu with Settings item
+  const { Menu } = require('electron');
+  const template = [
+    ...(process.platform === 'darwin' ? [{
+      label: app.name,
+      submenu: [
+        { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: () => createSettingsWindow() },
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Settings', accelerator: 'Ctrl+,', click: () => createSettingsWindow() },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -55,7 +158,24 @@ function runOrganizer(dirPath, operation = 'plan', options = {}) {
   return new Promise((resolve, reject) => {
     console.log('runOrganizer called:', { dirPath, operation, options });
     
-    const args = ['-m', 'backend.cli', '--path', dirPath];
+    // Determine the path to the Python backend executable
+    let backendExecutable;
+    if (app.isPackaged) {
+      // In a packaged app, the executable is in extraResources
+      // Adjust path based on electron-builder's extraResources configuration and PyInstaller's --onedir output
+      if (process.platform === 'darwin') {
+        // macOS: The extraResources are copied to Contents/Resources/backend/smart-file-organizer-backend/
+        backendExecutable = path.join(process.resourcesPath, 'backend', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
+      } else {
+        // For other platforms, adjust as needed (e.g., Windows: resources/backend/smart-file-organizer-backend/smart-file-organizer-backend.exe)
+        backendExecutable = path.join(process.resourcesPath, 'backend', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
+      }
+    } else {
+      // In development mode, run directly from the dist folder's executable within the --onedir output
+      backendExecutable = path.join(__dirname, '..', 'dist', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
+    }
+
+    const args = ['--path', dirPath];
     
     // Add operation-specific arguments
     switch (operation) {
@@ -99,27 +219,31 @@ function runOrganizer(dirPath, operation = 'plan', options = {}) {
     console.log('Python command args:', args);
 
     // Use virtual environment Python if available, fallback to system python
-    const scriptRoot = path.join(__dirname, '..'); // project root
-    const venvPython = path.join(scriptRoot, 'venv', 'bin', 'python3');
+    // This logic is now replaced by directly calling the bundled backendExecutable
+    // const scriptRoot = path.join(__dirname, '..'); // project root
+    // const venvPython = path.join(scriptRoot, 'venv', 'bin', 'python3');
     
-    let pythonExecutable;
-    try {
-      // Check if virtual environment Python exists
-      if (fs.existsSync(venvPython)) {
-        pythonExecutable = venvPython;
-        console.log('Using venv Python:', venvPython);
-      } else {
-        // Fallback to system python
-        pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-        console.log('Using system Python:', pythonExecutable);
-      }
-    } catch (error) {
-      console.error('Error checking Python executable:', error);
-      pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-    }
+    // let pythonExecutable;
+    // try {
+    //   // Check if virtual environment Python exists
+    //   if (fs.existsSync(venvPython)) {
+    //     pythonExecutable = venvPython;
+    //     console.log('Using venv Python:', venvPython);
+    //   } else {
+    //     // Fallback to system python
+    //     pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
+    //     console.log('Using system Python:', pythonExecutable);
+    //   }
+    // } catch (error) {
+    //   console.error('Error checking Python executable:', error);
+    //   pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
+    // }
 
-    const pythonProcess = spawn(pythonExecutable, args, {
-      cwd: scriptRoot,
+    // Set the current working directory for the Python process
+    const pythonCwd = app.isPackaged ? path.dirname(backendExecutable) : path.join(__dirname, '..');
+
+    const pythonProcess = spawn(backendExecutable, args, {
+      cwd: pythonCwd,
       env: { ...process.env },
     });
 

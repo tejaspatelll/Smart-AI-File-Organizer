@@ -33,5 +33,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onProgressUpdate: (callback) => ipcRenderer.on('organize:progress', (event, ...args) => callback(...args)),
   
   // Utility functions
-  openFolder: (folderPath) => ipcRenderer.invoke('shell:openFolder', folderPath)
+  openFolder: (folderPath) => ipcRenderer.invoke('shell:openFolder', folderPath),
+  
+  // Settings / API key management
+  settings: {
+    getApiKey: () => ipcRenderer.invoke('settings:getApiKey'),
+    setApiKey: (key) => ipcRenderer.invoke('settings:setApiKey', key),
+    deleteApiKey: () => ipcRenderer.invoke('settings:deleteApiKey'),
+    open: () => ipcRenderer.send('settings:open')
+  }
 }); 

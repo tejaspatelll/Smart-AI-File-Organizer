@@ -7,9 +7,29 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "package": "electron-builder --dir"
   },
-  "dependencies": {
-    "electron": "^26.2.0"
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^26.2.0",
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.yourcompany.smartfileorganizer",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dmg"
+    },
+    "directories": {
+      "output": "build"
+    },
+    "extraResources": [
+      {
+        "from": "../dist/smart-file-organizer-backend",
+        "to": "backend/smart-file-organizer-backend",
+        "filter": ["**/*"]
+      }
+    ]
   }
 } 
