@@ -15,8 +15,11 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
+from dotenv import load_dotenv
 
 from .organizer import DirectoryScanner, EnhancedDirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier, IntelligentAIClassifier, EnhancedFileInfo, FileInfo
+
+load_dotenv()
 
 class ProgressReporter:
     """A simple class to report progress back to the Electron app via stderr."""
