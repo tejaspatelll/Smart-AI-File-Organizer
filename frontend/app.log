@@ -1,0 +1,35 @@
+/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/electron-prompt/lib/index.js:26
+			throw error;
+			^
+
+Error: Install and set-up package `@electron/remote` to use this module from a renderer processs.
+It is preferable to set up message exchanges for this using `ipcMain.handle()` and `ipcRenderer.invoke()`,
+avoiding remote IPC overhead costs, and one morepackage dependancy.
+
+Original error message:
+
+Cannot read properties of undefined (reading 'on')
+    at getElectronMainExport (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/electron-prompt/lib/index.js:17:18)
+    at Object.<anonymous> (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/electron-prompt/lib/index.js:37:23)
+    at Module._compile (node:internal/modules/cjs/loader:1271:14)
+    at Object..js (node:internal/modules/cjs/loader:1326:10)
+    at Module.load (node:internal/modules/cjs/loader:1126:32)
+    at node:internal/modules/cjs/loader:967:12
+    at Function._load (node:electron/js2c/asar_bundle:2:13327)
+    at Module.require (node:internal/modules/cjs/loader:1150:19)
+    at require (node:internal/modules/cjs/helpers:110:18)
+    at Object.<anonymous> (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/main.js:6:16) {
+  originalError: TypeError: Cannot read properties of undefined (reading 'on')
+      at handleMessage (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/@electron/remote/dist/src/renderer/remote.js:327:28)
+      at Object.<anonymous> (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/@electron/remote/dist/src/renderer/remote.js:352:1)
+      at Module._compile (node:internal/modules/cjs/loader:1271:14)
+      at Object..js (node:internal/modules/cjs/loader:1326:10)
+      at Module.load (node:internal/modules/cjs/loader:1126:32)
+      at node:internal/modules/cjs/loader:967:12
+      at Function._load (node:electron/js2c/asar_bundle:2:13327)
+      at Module.require (node:internal/modules/cjs/loader:1150:19)
+      at require (node:internal/modules/cjs/helpers:110:18)
+      at Object.<anonymous> (/Users/tejaspatel/Desktop/Projects/Files Manager/frontend/node_modules/@electron/remote/dist/src/renderer/index.js:15:14)
+}
+
+Node.js v18.16.1

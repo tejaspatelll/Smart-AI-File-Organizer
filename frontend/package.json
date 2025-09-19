@@ -10,13 +10,18 @@
     "dev": "electron .",
     "package": "electron-builder --dir"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@electron/remote": "^2.1.3",
+    "electron-prompt": "^1.7.0",
+    "electron-store": "^8.2.0"
+  },
   "devDependencies": {
     "electron": "^26.2.0",
     "electron-builder": "^24.6.4"
   },
   "build": {
     "appId": "com.yourcompany.smartfileorganizer",
+    "productName": "Smart File Organizer",
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg"
@@ -26,10 +31,12 @@
     },
     "extraResources": [
       {
-        "from": "../dist/smart-file-organizer-backend",
-        "to": "backend/smart-file-organizer-backend",
-        "filter": ["**/*"]
+        "from": "../dist/SmartFileOrganizerBackend",
+        "to": "backend/SmartFileOrganizerBackend",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }
-} 
+}

@@ -21,6 +21,8 @@ class SmartOrganizer {
   init() {
     this.setupEventListeners();
     this.setupAnimations();
+    this.applyPersistedTheme();
+    this.initTooltips();
     this.showView('welcome');
   }
 
@@ -124,6 +126,33 @@ class SmartOrganizer {
 
     document.getElementById('settings-btn').addEventListener('click', () => {
       this.showSettings();
+    });
+
+    // Theme toggle
+    document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+      this.toggleTheme();
+    });
+
+    // Command palette trigger
+    document.getElementById('command-palette-btn')?.addEventListener('click', () => {
+      this.openCommandPalette();
+    });
+
+    // Sidebar toggle
+    const sidebar = document.getElementById('side-drawer');
+    const toggleBtn = document.getElementById('sidebar-toggle-btn');
+    const closeBtn = document.getElementById('sidebar-close-btn');
+    const updateExpanded = () => toggleBtn?.setAttribute('aria-expanded', String(sidebar?.classList.contains('open')));
+    toggleBtn?.addEventListener('click', () => {
+      sidebar?.classList.toggle('open');
+      if (sidebar) sidebar.setAttribute('aria-hidden', sidebar.classList.contains('open') ? 'false' : 'true');
+      updateExpanded();
+    });
+    closeBtn?.addEventListener('click', () => {
+      sidebar?.classList.remove('open');
+      if (sidebar) sidebar.setAttribute('aria-hidden', 'true');
+      updateExpanded();
+      toggleBtn?.focus();
     });
   }
 
@@ -357,10 +386,11 @@ class SmartOrganizer {
       }
 
       console.log(`Organization plan generated with ${plan.length} items`);
-      this.organizationPlan = plan;
-      this.allFiles = [...plan];
+      // Attach stable IDs to avoid expensive lookups later
+      this.organizationPlan = plan.map((f, i) => ({ ...f, _id: i }));
+      this.allFiles = [...this.organizationPlan];
       this.selectedFiles.clear();
-      plan.forEach((_, index) => this.selectedFiles.add(index));
+      this.allFiles.forEach((_, index) => this.selectedFiles.add(index));
 
       this.displayResults();
     } catch (error) {
@@ -397,30 +427,434 @@ class SmartOrganizer {
     progressBar.setAttribute('aria-valuenow', percentage);
     statusText.textContent = message;
     percentageText.textContent = `${percentage}%`;
+    this.announce(`${message} ${percentage}%`);
   }
 
   displayResults() {
-    // Populate all view modes with the data first
-    this.populateTableView();
-    this.populateCardView();
-    this.populateGroupedView();
+    // Show loading indicator for large datasets
+    if (this.allFiles.length > 1000) {
+      this.showTableLoading(true);
+    }
+    
+    // Initialize pagination if needed
+    this.currentPage = 1;
+    this.itemsPerPage = this.allFiles.length > 5000 ? 100 : 1000;
+    this.filteredFiles = [...this.allFiles];
+    
+    // Render new fast list view
+    this.renderFastList();
+    // Defer other views until the user switches via view toggle
+    // this.populateCardView();
+    // this.populateGroupedView();
     
     // Update summary and filters
     this.updatePlanSummary();
-    this.applyFilters();
+    this.recomputeFiltersAndRender();
     this.updateSelectionSummary();
+    this.setupPagination();
     
-    // Finally, transition to the results view
+    // Hide loading indicator
+    this.showTableLoading(false);
+    
     this.showView('results');
   }
 
-  populateTableView() {
+  showTableLoading(show) {
+    const container = document.querySelector('.results-table-container');
+    if (!container) return;
+    
+    if (show) {
+      const loadingDiv = document.createElement('div');
+      loadingDiv.id = 'table-loading';
+      loadingDiv.className = 'table-loading-overlay';
+      loadingDiv.innerHTML = `
+        <div class="loading-content">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-3 mb-0">Rendering ${this.allFiles.length} files...</p>
+        </div>
+      `;
+      container.appendChild(loadingDiv);
+    } else {
+      const loadingDiv = document.getElementById('table-loading');
+      if (loadingDiv) {
+        loadingDiv.remove();
+      }
+    }
+  }
+
+  setupPagination() {
+    if (this.filteredFiles.length <= this.itemsPerPage) return;
+    
+    const totalPages = Math.ceil(this.filteredFiles.length / this.itemsPerPage);
+    const paginationContainer = document.createElement('div');
+    paginationContainer.className = 'pagination-container d-flex justify-content-center align-items-center mt-3';
+    paginationContainer.innerHTML = `
+      <nav aria-label="Results pagination">
+        <ul class="pagination pagination-sm">
+          <li class="page-item" id="prev-page">
+            <a class="page-link" href="#" aria-label="Previous">
+              <span aria-hidden="true">&laquo;</span>
+            </a>
+          </li>
+          <li class="page-item active">
+            <span class="page-link" id="current-page">1</span>
+          </li>
+          <li class="page-item">
+            <span class="page-link">of ${totalPages}</span>
+          </li>
+          <li class="page-item" id="next-page">
+            <a class="page-link" href="#" aria-label="Next">
+              <span aria-hidden="true">&raquo;</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+      <div class="ms-3">
+        <select class="form-select form-select-sm" id="items-per-page" style="width: auto;">
+          <option value="50" ${this.itemsPerPage === 50 ? 'selected' : ''}>50 per page</option>
+          <option value="100" ${this.itemsPerPage === 100 ? 'selected' : ''}>100 per page</option>
+          <option value="250" ${this.itemsPerPage === 250 ? 'selected' : ''}>250 per page</option>
+          <option value="500" ${this.itemsPerPage === 500 ? 'selected' : ''}>500 per page</option>
+          <option value="1000" ${this.itemsPerPage === 1000 ? 'selected' : ''}>1000 per page</option>
+        </select>
+      </div>
+    `;
+    
+    // Add pagination to results footer
+    const resultsFooter = document.querySelector('.results-footer');
+    resultsFooter.appendChild(paginationContainer);
+    
+    // Add event listeners
+    document.getElementById('prev-page').addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this.currentPage > 1) {
+        this.currentPage--;
+        this.updateTablePage();
+      }
+    });
+    
+    document.getElementById('next-page').addEventListener('click', (e) => {
+      e.preventDefault();
+      const totalPages = Math.ceil(this.filteredFiles.length / this.itemsPerPage);
+      if (this.currentPage < totalPages) {
+        this.currentPage++;
+        this.updateTablePage();
+      }
+    });
+    
+    document.getElementById('items-per-page').addEventListener('change', (e) => {
+      this.itemsPerPage = parseInt(e.target.value);
+      this.currentPage = 1;
+      this.updateTablePage();
+      this.setupPagination(); // Refresh pagination
+    });
+  }
+
+  updateTablePage() {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    const end = start + this.itemsPerPage;
+    const pageFiles = this.filteredFiles.slice(start, end);
+    
     const tbody = document.getElementById('results-table-body');
     tbody.innerHTML = '';
-    this.allFiles.forEach((file, index) => {
-      const row = this.createFileRow(file, index);
-      tbody.appendChild(row);
+    
+    const fragment = document.createDocumentFragment();
+    pageFiles.forEach(file => {
+      fragment.appendChild(this.createFileRow(file, file._id));
     });
+    tbody.appendChild(fragment);
+    
+    // Update pagination display
+    const currentPageSpan = document.getElementById('current-page');
+    const totalPages = Math.ceil(this.filteredFiles.length / this.itemsPerPage);
+    if (currentPageSpan) {
+      currentPageSpan.textContent = this.currentPage;
+    }
+    
+    // Update prev/next button states
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    if (prevBtn) {
+      prevBtn.classList.toggle('disabled', this.currentPage === 1);
+    }
+    if (nextBtn) {
+      nextBtn.classList.toggle('disabled', this.currentPage === totalPages);
+    }
+  }
+
+  populateTableView() { this.renderFastList(); }
+
+  // New: ultra-fast windowed list
+  renderFastList() {
+    const viewport = document.getElementById('list-viewport');
+    if (!viewport) return;
+    viewport.innerHTML = '';
+
+    const inner = document.createElement('div');
+    inner.className = 'list-inner';
+    viewport.appendChild(inner);
+
+    const ROW_HEIGHT = 80;
+    const BUFFER = 6;
+
+    const files = this.filteredFiles || [];
+    inner.style.height = (files.length * ROW_HEIGHT) + 'px';
+
+    const getVisibleCount = () => Math.ceil((viewport.clientHeight || 600) / ROW_HEIGHT);
+    let visible = getVisibleCount();
+    let poolSize = Math.min(files.length, visible + BUFFER * 2 + 2);
+
+    const pool = [];
+    const buildRow = () => {
+      const el = document.createElement('div');
+      el.className = 'list-row';
+      el.role = 'listitem';
+      el.innerHTML = `
+        <div class="col checkbox"><input class="form-check-input file-checkbox" type="checkbox"></div>
+        <div class="col file file-col">
+          <div class="file-info-compact">
+            <div class="file-type-icon"></div>
+            <div class="file-details">
+              <div class="file-name-compact"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col priority">
+          <div class="priority-info">
+            <span class="priority-badge-compact"></span>
+            <span class="confidence-compact"></span>
+          </div>
+        </div>
+        <div class="col movement movement-col">
+          <div class="movement-flow">
+            <div class="from"></div>
+            <div class="arrow-compact">→</div>
+            <div class="to"></div>
+          </div>
+        </div>
+        <div class="col reasoning reasoning-col"></div>`;
+      inner.appendChild(el);
+      return el;
+    };
+
+    while (pool.length < poolSize) pool.push(buildRow());
+
+    const updateRow = (rowEl, file, rowIndex) => {
+      rowEl.style.transform = `translateY(${rowIndex * ROW_HEIGHT}px)`;
+      if (rowEl._id === file._id) return;
+      rowEl._id = file._id;
+      // checkbox
+      const cb = rowEl.querySelector('.file-checkbox');
+      cb.dataset.index = file._id;
+      cb.checked = this.selectedFiles.has(file._id);
+      // icon and name
+      const iconWrap = rowEl.querySelector('.file-type-icon');
+      iconWrap.className = `file-type-icon ${this.getFileTypeClass(file.source)}`;
+      iconWrap.innerHTML = `<i class="bi ${this.getFileIcon(file.source)}"></i>`;
+      rowEl.querySelector('.file-name-compact').textContent = this.getFileName(file.source);
+      // priority/confidence
+      const badge = rowEl.querySelector('.priority-badge-compact');
+      badge.className = `priority-badge-compact priority-${file.priority}`;
+      badge.textContent = this.getPriorityText(file.priority).toUpperCase();
+      rowEl.querySelector('.confidence-compact').textContent = `${Math.round(file.confidence * 100)}%`;
+      // movement: show full source dir in grey and destination as relative from common root in blue
+      const fromEl = rowEl.querySelector('.from');
+      const toEl = rowEl.querySelector('.to');
+      const sourceDir = this.getDirectoryPath(file.source);
+      const destDir = this.getDirectoryPath(file.destination);
+      const { relativeDest } = this.computeCommonAndRelative(sourceDir, destDir);
+      fromEl.innerHTML = `<span class="path-label">FROM:</span> <span class="path-text path-from" title="${sourceDir}">${sourceDir}</span>`;
+      toEl.innerHTML = `<span class="path-label">TO:</span> <span class="path-text path-to" title="${destDir}">${relativeDest}</span>`;
+      // reasoning with emoji and better formatting
+      const reasoningEl = rowEl.querySelector('.reasoning-col');
+      const reasoningText = this.truncateReason(file.reason, 60);
+      reasoningEl.innerHTML = `<span class="reasoning-content"><i class="bi bi-robot me-1"></i>${reasoningText}</span>`;
+    };
+
+    let start = 0, end = 0;
+    const render = (force = false) => {
+      const first = Math.max(0, Math.floor(viewport.scrollTop / ROW_HEIGHT) - BUFFER);
+      const last = Math.min(files.length, first + visible + BUFFER * 2);
+      if (!force && first === start && last === end) return;
+      start = first; end = last;
+      // ensure pool size
+      const desired = Math.min(files.length, visible + BUFFER * 2 + 2);
+      while (pool.length < desired) pool.push(buildRow());
+      while (pool.length > desired) pool.pop().remove();
+      // fill pool
+      for (let i = 0; i < pool.length; i++) {
+        const rowIndex = start + i;
+        const el = pool[i];
+        if (rowIndex < end) {
+          const file = files[rowIndex];
+          el.style.display = '';
+          updateRow(el, file, rowIndex);
+        } else {
+          el.style.display = 'none';
+          el._id = undefined;
+        }
+      }
+    };
+
+    // Event delegation for checkboxes
+    viewport.onchange = (e) => {
+      const t = e.target;
+      if (t && t.classList.contains('file-checkbox')) {
+        const idx = parseInt(t.dataset.index);
+        this.toggleFileSelection(idx, t.checked);
+      }
+    };
+
+    let ticking = false;
+    viewport.addEventListener('scroll', () => {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(() => { ticking = false; render(false); });
+    }, { passive: true });
+
+    new ResizeObserver(() => { visible = getVisibleCount(); render(true); }).observe(viewport);
+    render(true);
+  }
+
+  setupVirtualTable() {
+    const container = document.querySelector('.results-table-container');
+    if (!container) return;
+
+    // Clone the existing table structure so we preserve the sticky header layout
+    const baseTable = document.querySelector('.results-table');
+    const clonedTable = baseTable ? baseTable.cloneNode(true) : null;
+    if (!clonedTable) return;
+
+    // Ensure tbody is empty; we'll render only the visible rows
+    const clonedTbody = clonedTable.querySelector('#results-table-body');
+    if (clonedTbody) clonedTbody.innerHTML = '';
+
+    // Build the virtual scroller container
+    const virtualContainer = document.createElement('div');
+    virtualContainer.className = 'virtual-table-container';
+    virtualContainer.style.height = '60vh';
+    virtualContainer.style.overflowY = 'auto';
+    virtualContainer.style.position = 'relative';
+
+    // Spacers simulate the full height
+    const topSpacer = document.createElement('div');
+    const bottomSpacer = document.createElement('div');
+
+    // Replace content
+    container.innerHTML = '';
+    virtualContainer.appendChild(topSpacer);
+    virtualContainer.appendChild(clonedTable);
+    virtualContainer.appendChild(bottomSpacer);
+    container.appendChild(virtualContainer);
+
+    // Re-bind header interactions lost during cloning (Select All)
+    const selectAllEl = clonedTable.querySelector('#select-all-checkbox-new');
+    if (selectAllEl) {
+      selectAllEl.addEventListener('change', (e) => {
+        if (e.target.checked) this.selectAllFiles(); else this.deselectAllFiles();
+      });
+    }
+
+    // Virtualization settings with a fixed row pool (recycling)
+    const ROW_HEIGHT = 80; // Keep in sync with CSS row height
+    const BUFFER_ROWS = 6; // small buffer for smooth scrolling
+    let visibleRows = Math.ceil((virtualContainer.clientHeight || 600) / ROW_HEIGHT);
+    let startIndex = 0;
+    let endIndex = Math.min(this.filteredFiles.length, visibleRows + BUFFER_ROWS);
+
+    const tbody = clonedTable.querySelector('#results-table-body');
+    const rowPool = [];
+
+    const ensurePoolSize = (size) => {
+      if (!tbody) return;
+      while (rowPool.length < size) {
+        const placeholder = document.createElement('tr');
+        placeholder.style.display = 'none';
+        tbody.appendChild(placeholder);
+        rowPool.push(placeholder);
+      }
+      while (rowPool.length > size) {
+        const old = rowPool.pop();
+        old?.remove();
+      }
+    };
+
+    const hydrateInitial = () => {
+      const poolSize = Math.min(this.filteredFiles.length, visibleRows + BUFFER_ROWS * 2 + 2);
+      ensurePoolSize(poolSize);
+      for (let k = 0; k < rowPool.length; k++) {
+        const i = startIndex + k;
+        if (i < endIndex) {
+          const row = this.createFileRow(this.filteredFiles[i], this.filteredFiles[i]._id);
+          tbody.replaceChild(row, rowPool[k]);
+          rowPool[k] = row;
+        } else {
+          rowPool[k].style.display = 'none';
+          rowPool[k].dataset.fileIndex = '';
+        }
+      }
+    };
+
+    const renderWindow = (force = false) => {
+      const scrollTop = virtualContainer.scrollTop;
+      const newStart = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+      const newEnd = Math.min(this.filteredFiles.length, newStart + visibleRows + BUFFER_ROWS * 2);
+      if (!force && newStart === startIndex && newEnd === endIndex) return;
+
+      startIndex = newStart;
+      endIndex = newEnd;
+      topSpacer.style.height = `${startIndex * ROW_HEIGHT}px`;
+      bottomSpacer.style.height = `${(this.filteredFiles.length - endIndex) * ROW_HEIGHT}px`;
+
+      const desiredPool = Math.min(this.filteredFiles.length, visibleRows + BUFFER_ROWS * 2 + 2);
+      ensurePoolSize(desiredPool);
+
+      for (let k = 0; k < rowPool.length; k++) {
+        const i = startIndex + k;
+        const current = rowPool[k];
+        if (i < endIndex) {
+          const file = this.filteredFiles[i];
+          // If already rendering this index, just ensure visible
+          if (String(current.dataset.fileIndex) !== String(file._id)) {
+            const newRow = this.createFileRow(file, file._id);
+            if (current.parentNode === tbody) {
+              tbody.replaceChild(newRow, current);
+            } else {
+              tbody.appendChild(newRow);
+              current.remove();
+            }
+            rowPool[k] = newRow;
+          }
+          rowPool[k].style.display = '';
+          rowPool[k].dataset.fileIndex = String(file._id);
+        } else {
+          current.style.display = 'none';
+          current.dataset.fileIndex = '';
+        }
+      }
+    };
+
+    // rAF-based scroll handling for per-frame updates (no trailing debounce lag)
+    let isTicking = false;
+    virtualContainer.addEventListener('scroll', () => {
+      if (isTicking) return;
+      isTicking = true;
+      requestAnimationFrame(() => {
+        isTicking = false;
+        renderWindow(false);
+      });
+    }, { passive: true });
+
+    // Recalculate visible rows on container resize
+    const resizeObserver = new ResizeObserver(() => {
+      visibleRows = Math.ceil((virtualContainer.clientHeight || 600) / ROW_HEIGHT);
+      renderWindow(true);
+    });
+    try { resizeObserver.observe(virtualContainer); } catch (_) {}
+
+    // Initial render after mounting
+    renderWindow(true);
   }
 
   createFileRow(file, index) {
@@ -461,12 +895,12 @@ class SmartOrganizer {
         <div class="movement-flow-compact">
           <div class="from-path-compact">
             <span class="path-label-small">FROM:</span>
-            <span class="path-text-compact" title="${file.source}">${this.getDirectoryPath(file.source)}</span>
+            <span class="path-text-compact path-from" title="${this.getDirectoryPath(file.source)}">${this.getDirectoryPath(file.source)}</span>
           </div>
           <div class="arrow-compact">→</div>
           <div class="to-path-compact">
             <span class="path-label-small">TO:</span>
-            <span class="path-text-compact" title="${file.destination}">${this.getDirectoryPath(file.destination)}</span>
+            <span class="path-text-compact path-to" title="${this.getDirectoryPath(file.destination)}">${this.computeCommonAndRelative(this.getDirectoryPath(file.source), this.getDirectoryPath(file.destination)).relativeDest}</span>
           </div>
         </div>
       </td>
@@ -660,45 +1094,44 @@ class SmartOrganizer {
     return dirPath || '/';
   }
 
+  // Compute common root and relative destination path for clearer display
+  computeCommonAndRelative(sourceDir, destDir) {
+    try {
+      const srcParts = sourceDir.split('/').filter(Boolean);
+      const dstParts = destDir.split('/').filter(Boolean);
+      const len = Math.min(srcParts.length, dstParts.length);
+      let i = 0;
+      while (i < len && srcParts[i] === dstParts[i]) i++;
+      const commonRoot = '/' + srcParts.slice(0, i).join('/');
+      const relativeDest = '/' + dstParts.slice(i).join('/');
+      return { commonRoot: commonRoot === '' ? '/' : commonRoot, relativeDest: relativeDest === '/' ? '/' : relativeDest };
+    } catch (_) {
+      return { commonRoot: '/', relativeDest: destDir };
+    }
+  }
+
   truncateReason(reason, maxLength = 80) {
-    if (!reason || reason.length <= maxLength) return reason || 'No reasoning provided';
+    if (!reason || reason.length <= maxLength) return reason || 'AI analysis not available';
     return reason.substring(0, maxLength - 3) + '...';
   }
 
   updatePlanSummary() {
     const summary = this.calculateSummary();
     
-    const summaryElement = document.getElementById('plan-summary-new');
-    summaryElement.innerHTML = `
-      <div class="row g-3">
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-number">${summary.totalFiles}</div>
-            <div class="stat-label">Total Files</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-number">${summary.categories}</div>
-            <div class="stat-label">Categories</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-number">${summary.duplicates}</div>
-            <div class="stat-label">Duplicates</div>
-          </div>
-        </div>
-        <div class="col-md-3">
-          <div class="stat-card">
-            <div class="stat-number">${Math.round(summary.avgConfidence * 100)}%</div>
-            <div class="stat-label">Avg Confidence</div>
-          </div>
-        </div>
-      </div>
-    `;
+    // Update individual stat elements efficiently (no innerHTML replacement)
+    const totalFilesEl = document.getElementById('total-files-display');
+    const categoriesEl = document.getElementById('categories-display');
+    const duplicatesEl = document.getElementById('duplicates-display');
+    const confidenceEl = document.getElementById('confidence-display');
     
-    document.getElementById('total-files-stat').textContent = summary.totalFiles;
+    if (totalFilesEl) totalFilesEl.textContent = summary.totalFiles;
+    if (categoriesEl) categoriesEl.textContent = summary.categories;
+    if (duplicatesEl) duplicatesEl.textContent = summary.duplicates;
+    if (confidenceEl) confidenceEl.textContent = `${Math.round(summary.avgConfidence * 100)}%`;
+    
+    // Also update header stat
+    const headerStatEl = document.getElementById('total-files-stat');
+    if (headerStatEl) headerStatEl.textContent = summary.totalFiles;
   }
 
   calculateSummary() {
@@ -722,56 +1155,62 @@ class SmartOrganizer {
   }
 
   applyFilters() {
-    const priorityFilter = document.querySelector('input[name="priority-filter"]:checked').value;
-    const confidenceFilter = document.querySelector('input[name="confidence-filter"]:checked').value;
-    const showDuplicates = document.getElementById('show-duplicates-new').checked;
-    
-    const rows = document.querySelectorAll('#results-table-body tr');
-    
-    rows.forEach(row => {
-      const index = parseInt(row.dataset.fileIndex);
-      const file = this.allFiles[index];
-      let visible = true;
-      
+    this.recomputeFiltersAndRender();
+  }
+
+  recomputeFiltersAndRender() {
+    const priorityFilter = document.querySelector('input[name="priority-filter"]:checked')?.value || 'all';
+    const confidenceFilter = document.querySelector('input[name="confidence-filter"]:checked')?.value || 'all';
+    const showDuplicates = document.getElementById('show-duplicates-new')?.checked ?? true;
+    const searchTerm = document.getElementById('file-search')?.value.toLowerCase().trim() || '';
+
+    // Start from all files and apply search + filters together
+    this.filteredFiles = this.allFiles.filter(file => {
+      // Search
+      if (searchTerm) {
+        const fileName = this.getFileName(file.source).toLowerCase();
+        const sourcePath = file.source.toLowerCase();
+        const destPath = file.destination.toLowerCase();
+        const reason = (file.reason || '').toLowerCase();
+        const matchesSearch = fileName.includes(searchTerm) || sourcePath.includes(searchTerm) || destPath.includes(searchTerm) || reason.includes(searchTerm);
+        if (!matchesSearch) return false;
+      }
+
       // Priority filter
       if (priorityFilter !== 'all') {
-        switch (priorityFilter) {
-          case 'high':
-            visible = visible && file.priority >= 4;
-            break;
-          case 'medium':
-            visible = visible && file.priority === 3;
-            break;
-          case 'low':
-            visible = visible && file.priority <= 2;
-            break;
-        }
+        if (priorityFilter === 'high' && !(file.priority >= 4)) return false;
+        if (priorityFilter === 'medium' && !(file.priority === 3)) return false;
+        if (priorityFilter === 'low' && !(file.priority <= 2)) return false;
       }
-      
+
       // Confidence filter
       if (confidenceFilter !== 'all') {
-        switch (confidenceFilter) {
-          case 'high':
-            visible = visible && file.confidence >= 0.8;
-            break;
-          case 'medium':
-            visible = visible && file.confidence >= 0.5 && file.confidence < 0.8;
-            break;
-          case 'low':
-            visible = visible && file.confidence < 0.5;
-            break;
-        }
+        if (confidenceFilter === 'high' && !(file.confidence >= 0.8)) return false;
+        if (confidenceFilter === 'medium' && !(file.confidence >= 0.5 && file.confidence < 0.8)) return false;
+        if (confidenceFilter === 'low' && !(file.confidence < 0.5)) return false;
       }
-      
+
       // Duplicates filter
-      if (!showDuplicates && file.is_duplicate) {
-        visible = false;
-      }
-      
-      row.style.display = visible ? '' : 'none';
+      if (!showDuplicates && file.is_duplicate) return false;
+
+      return true;
     });
-    
+
+    // Reset to first page and update display
+    this.currentPage = 1;
+
+    // Always use fast list renderer now
+    this.renderFastList();
+
     this.updateSelectionSummary();
+  }
+
+  updatePaginationInfo() {
+    const totalPages = Math.ceil(this.filteredFiles.length / this.itemsPerPage);
+    const paginationInfo = document.querySelector('.pagination-container .page-item:nth-child(3) .page-link');
+    if (paginationInfo) {
+      paginationInfo.textContent = `of ${totalPages}`;
+    }
   }
 
   toggleFileSelection(index, selected) {
@@ -786,14 +1225,12 @@ class SmartOrganizer {
   }
 
   selectAllFiles() {
-    const visibleRows = document.querySelectorAll('#results-table-body tr:not([style*="display: none"])');
-    
-    visibleRows.forEach(row => {
-      const index = parseInt(row.dataset.fileIndex);
-      const checkbox = row.querySelector('.file-checkbox');
-      checkbox.checked = true;
-      this.selectedFiles.add(index);
+    // Select all currently filtered files
+    this.filteredFiles.forEach(file => {
+      this.selectedFiles.add(file._id);
     });
+    // Reflect in UI checkboxes that are rendered
+    this.updateAllCheckboxes();
     
     document.getElementById('select-all-checkbox-new').checked = true;
     this.updateSelectionSummary();
@@ -814,7 +1251,7 @@ class SmartOrganizer {
 
   updateSelectionSummary() {
     const selectedCount = this.selectedFiles.size;
-    const totalVisible = document.querySelectorAll('#results-table-body tr:not([style*="display: none"])').length;
+    const totalVisible = this.filteredFiles ? this.filteredFiles.length : 0;
     
     const summaryText = selectedCount > 0 
       ? `${selectedCount} of ${totalVisible} files selected`
@@ -956,6 +1393,8 @@ class SmartOrganizer {
     // Create a modern error notification
     const errorToast = document.createElement('div');
     errorToast.className = 'toast align-items-center text-white bg-danger border-0';
+    errorToast.setAttribute('role', 'status');
+    errorToast.setAttribute('aria-live', 'assertive');
     errorToast.innerHTML = `
       <div class="d-flex">
         <div class="toast-body">
@@ -979,6 +1418,8 @@ class SmartOrganizer {
   showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `toast align-items-center text-white bg-${type} border-0`;
+    notification.setAttribute('role', 'status');
+    notification.setAttribute('aria-live', 'polite');
     notification.innerHTML = `
       <div class="d-flex">
         <div class="toast-body">${message}</div>
@@ -1053,6 +1494,135 @@ class SmartOrganizer {
     document.querySelector('#settingsModal .modal-body').innerHTML = settingsContent;
     modal.show();
   }
+
+  // Theme management
+  applyPersistedTheme() {
+    try {
+      const saved = localStorage.getItem('sfo-theme-v2') || 'auto';
+      this.themeMode = saved; // 'auto' | 'light' | 'dark'
+      this.applyThemeMode(saved);
+      // listen for system changes when in auto mode
+      this.mql = window.matchMedia('(prefers-color-scheme: dark)');
+      this.mql.addEventListener?.('change', () => {
+        if (this.themeMode === 'auto') this.applyThemeMode('auto');
+      });
+    } catch (_) {}
+  }
+
+  toggleTheme() {
+    const next = this.themeMode === 'auto' ? 'light' : this.themeMode === 'light' ? 'dark' : 'auto';
+    this.themeMode = next;
+    this.applyThemeMode(next);
+    try { localStorage.setItem('sfo-theme-v2', next); } catch (_) {}
+  }
+
+  applyThemeMode(mode) {
+    const label = document.getElementById('theme-label');
+    if (mode === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      if (label) label.textContent = 'Dark';
+    } else if (mode === 'light') {
+      document.documentElement.removeAttribute('data-theme');
+      if (label) label.textContent = 'Light';
+    } else {
+      // auto
+      const preferDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (preferDark) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+      if (label) label.textContent = 'Auto';
+    }
+    this.announce(`Theme: ${mode}`);
+  }
+
+  initTooltips() {
+    try {
+      document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+    } catch (_) {}
+  }
+
+  announce(message) {
+    const region = document.getElementById('live-region');
+    if (!region) return;
+    region.textContent = '';
+    setTimeout(() => { region.textContent = message; }, 50);
+  }
+
+  // Command palette
+  openCommandPalette() {
+    const modalEl = document.getElementById('commandPalette');
+    const listEl = document.getElementById('command-list');
+    const inputEl = document.getElementById('command-search');
+    if (!modalEl || !listEl || !inputEl) return;
+
+    const commands = this.getCommands();
+    let activeIndex = 0;
+
+    const render = (filter = '') => {
+      listEl.innerHTML = '';
+      const filtered = commands.filter(c => c.label.toLowerCase().includes(filter.toLowerCase()));
+      filtered.forEach((cmd, idx) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action' + (idx === activeIndex ? ' active' : '');
+        item.innerHTML = `<span><i class="bi ${cmd.icon} me-2"></i>${cmd.label}</span><span class="hint">${cmd.hint || ''}</span>`;
+        item.addEventListener('click', () => {
+          cmd.run();
+          bsModal.hide();
+        });
+        listEl.appendChild(item);
+      });
+    };
+
+    render('');
+    const bsModal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: true });
+    bsModal.show();
+    setTimeout(() => inputEl.focus(), 120);
+
+    const keyHandler = (e) => {
+      const items = Array.from(listEl.querySelectorAll('.list-group-item'));
+      if (e.key === 'ArrowDown') {
+        activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        e.preventDefault();
+      } else if (e.key === 'ArrowUp') {
+        activeIndex = Math.max(activeIndex - 1, 0);
+        e.preventDefault();
+      } else if (e.key === 'Enter') {
+        items[activeIndex]?.click();
+        e.preventDefault();
+      }
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+    };
+
+    const inputHandler = (e) => {
+      activeIndex = 0;
+      render(e.target.value || '');
+    };
+
+    inputEl.addEventListener('input', inputHandler);
+    modalEl.addEventListener('keydown', keyHandler);
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      inputEl.removeEventListener('input', inputHandler);
+      modalEl.removeEventListener('keydown', keyHandler);
+    }, { once: true });
+  }
+
+  getCommands() {
+    return [
+      { label: 'Select Folder…', icon: 'bi-folder2-open', hint: 'Enter', run: () => this.selectFolder() },
+      { label: 'Start Organization', icon: 'bi-play-circle', hint: 'Enter', run: () => this.startOrganization() },
+      { label: 'Toggle Theme', icon: 'bi-moon-stars', hint: 'T', run: () => this.toggleTheme() },
+      { label: 'Show Help', icon: 'bi-question-circle', run: () => this.showHelp() },
+      { label: 'Open Settings', icon: 'bi-gear', run: () => this.showSettings() },
+      { label: 'View: Table', icon: 'bi-table', run: () => this.switchViewMode('table') },
+      { label: 'View: Cards', icon: 'bi-grid', run: () => this.switchViewMode('cards') },
+      { label: 'View: Grouped', icon: 'bi-collection', run: () => this.switchViewMode('grouped') },
+      { label: 'Approve High Confidence', icon: 'bi-check-circle', run: () => this.approveHighConfidence() },
+      { label: 'Export Plan', icon: 'bi-download', run: () => this.exportPlan() },
+    ];
+  }
 }
 
 // Enhanced progress handling for Electron communication
@@ -1072,30 +1642,8 @@ window.electronAPI.onProgress?.((progressData) => {
 
 // Enhanced Search and Filter Methods
 SmartOrganizer.prototype.applySearch = function() {
-  const searchTerm = document.getElementById('file-search').value.toLowerCase().trim();
-  const rows = document.querySelectorAll('#results-table-body tr');
-  
-  rows.forEach(row => {
-    const index = parseInt(row.dataset.fileIndex);
-    const file = this.allFiles[index];
-    const fileName = this.getFileName(file.source).toLowerCase();
-    const sourcePath = file.source.toLowerCase();
-    const destPath = file.destination.toLowerCase();
-    
-    const matchesSearch = !searchTerm || 
-      fileName.includes(searchTerm) || 
-      sourcePath.includes(searchTerm) || 
-      destPath.includes(searchTerm);
-    
-    if (matchesSearch) {
-      row.classList.remove('search-hidden');
-    } else {
-      row.classList.add('search-hidden');
-      row.style.display = 'none';
-    }
-  });
-  
-  this.applyFilters(); // Reapply other filters
+  // Search now recomputed together with other filters
+  this.recomputeFiltersAndRender();
 };
 
 SmartOrganizer.prototype.switchViewMode = function(mode) {
@@ -1119,7 +1667,7 @@ SmartOrganizer.prototype.switchViewMode = function(mode) {
 SmartOrganizer.prototype.populateViewMode = function(mode) {
   switch (mode) {
     case 'table':
-      // Table is populated by default
+      this.renderFastList();
       break;
     case 'cards':
       this.populateCardView();
@@ -1426,6 +1974,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Handle keyboard shortcuts
 document.addEventListener('keydown', (e) => {
+  const target = e.target;
+  const typingContext = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+  // Ignore most shortcuts while typing, but still allow Esc
+  const allowWhileTyping = e.key === 'Escape';
+  if (typingContext && !allowWhileTyping) return;
   // Escape key to go back
   if (e.key === 'Escape' && organizer) {
     switch (organizer.currentView) {
@@ -1447,5 +2001,40 @@ document.addEventListener('keydown', (e) => {
     if (activeButton) {
       activeButton.click();
     }
+  }
+
+  // Command palette shortcut: Cmd/Ctrl+K
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    organizer?.openCommandPalette();
+    return;
+  }
+
+  // Theme toggle: "t"
+  if (!e.metaKey && !e.ctrlKey && e.key.toLowerCase() === 't') {
+    e.preventDefault();
+    organizer?.toggleTheme();
+    return;
+  }
+
+  // Help: "?" or F1
+  if ((!e.metaKey && !e.ctrlKey && e.shiftKey && e.key === '?') || e.key === 'F1') {
+    e.preventDefault();
+    organizer?.showHelp();
+    return;
+  }
+
+  // Open Settings: Cmd/Ctrl+,
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault();
+    window.electronAPI.settings.open();
+    return;
+  }
+
+  // View mode shortcuts when on results view
+  if (organizer && organizer.currentView === 'results' && !e.metaKey && !e.ctrlKey) {
+    if (e.key === '1') { organizer.switchViewMode('table'); return; }
+    if (e.key === '2') { organizer.switchViewMode('cards'); return; }
+    if (e.key === '3') { organizer.switchViewMode('grouped'); return; }
   }
 }); 

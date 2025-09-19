@@ -3,7 +3,12 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const Store = require('electron-store');
-const prompt = require('electron-prompt');
+
+// Initialize @electron/remote after app is ready to avoid initialization issues
+let remoteMain;
+
+// Defer requiring electron-prompt until after app is ready and remote is enabled
+let prompt;
 
 // Persistent store for configuration such as API keys
 const store = new Store({
@@ -13,6 +18,11 @@ const store = new Store({
 
 async function ensureApiKey() {
   let apiKey = store.get('geminiApiKey');
+  // Fallback to environment variable if present (useful for dev/CI)
+  if (!apiKey && process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
+    apiKey = process.env.GEMINI_API_KEY.trim();
+    store.set('geminiApiKey', apiKey);
+  }
   if (!apiKey) {
     const result = await prompt({
       title: 'Gemini API Key Required',
@@ -51,6 +61,9 @@ function createSettingsWindow() {
       nodeIntegration: false,
     },
   });
+
+  // Enable @electron/remote for this window
+  try { remoteMain && remoteMain.enable(settingsWin.webContents); } catch (_) {}
   settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
 }
 
@@ -82,6 +95,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 900,
+    backgroundColor: '#f5f7fb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -89,6 +103,8 @@ function createWindow() {
     },
   });
 
+  // Enable @electron/remote for this window
+  try { remoteMain && remoteMain.enable(win.webContents); } catch (_) {}
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   if (process.env.NODE_ENV === 'development') {
     win.webContents.openDevTools();
@@ -101,6 +117,26 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('force-gpu-mem-available-mb', '1024');   // Upped from 512MB
 
 app.whenReady().then(async () => {
+  // Initialize @electron/remote now that app is ready
+  try {
+    remoteMain = require('@electron/remote/main');
+    remoteMain.initialize();
+  } catch (e) {
+    dialog.showErrorBox('Initialization Error', 'Failed to initialize @electron/remote.');
+    app.quit();
+    return;
+  }
+
+  // Now that app is ready and remote is initialized, require electron-prompt
+  if (!prompt) {
+    try {
+      prompt = require('electron-prompt');
+    } catch (e) {
+      dialog.showErrorBox('Initialization Error', 'Failed to load prompt module.');
+      app.quit();
+      return;
+    }
+  }
   // Ensure API key exists before launching main window
   const ok = await ensureApiKey();
   if (!ok) return; // Application quit if key not provided
@@ -143,6 +179,41 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// Resolve the backend executable across dev and packaged builds
+function resolveBackendExecutable() {
+  const candidates = [];
+  if (app.isPackaged) {
+    // Prefer SmartFileOrganizerBackend (from PyInstaller .app bundle)
+    candidates.push(
+      path.join(process.resourcesPath, 'backend', 'SmartFileOrganizerBackend', 'SmartFileOrganizerBackend')
+    );
+    // Fallback legacy naming
+    candidates.push(
+      path.join(process.resourcesPath, 'backend', 'smart-file-organizer-backend', 'smart-file-organizer-backend')
+    );
+  } else {
+    // Dev candidates
+    candidates.push(
+      path.join(__dirname, '..', 'dist', 'SmartFileOrganizerBackend.app', 'Contents', 'MacOS', 'SmartFileOrganizerBackend')
+    );
+    candidates.push(
+      path.join(__dirname, '..', 'dist', 'SmartFileOrganizerBackend', 'SmartFileOrganizerBackend')
+    );
+    candidates.push(
+      path.join(__dirname, '..', 'dist', 'smart-file-organizer-backend', 'smart-file-organizer-backend')
+    );
+  }
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        try { fs.chmodSync(candidate, 0o755); } catch (_) {}
+        return candidate;
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
 // IPC: choose directory
 ipcMain.handle('dialog:openDirectory', async () => {
   const result = await dialog.showOpenDialog({
@@ -158,21 +229,12 @@ function runOrganizer(dirPath, operation = 'plan', options = {}) {
   return new Promise((resolve, reject) => {
     console.log('runOrganizer called:', { dirPath, operation, options });
     
-    // Determine the path to the Python backend executable
-    let backendExecutable;
-    if (app.isPackaged) {
-      // In a packaged app, the executable is in extraResources
-      // Adjust path based on electron-builder's extraResources configuration and PyInstaller's --onedir output
-      if (process.platform === 'darwin') {
-        // macOS: The extraResources are copied to Contents/Resources/backend/smart-file-organizer-backend/
-        backendExecutable = path.join(process.resourcesPath, 'backend', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
-      } else {
-        // For other platforms, adjust as needed (e.g., Windows: resources/backend/smart-file-organizer-backend/smart-file-organizer-backend.exe)
-        backendExecutable = path.join(process.resourcesPath, 'backend', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
-      }
-    } else {
-      // In development mode, run directly from the dist folder's executable within the --onedir output
-      backendExecutable = path.join(__dirname, '..', 'dist', 'smart-file-organizer-backend', 'smart-file-organizer-backend');
+    // Determine the path to the backend executable robustly
+    const backendExecutable = resolveBackendExecutable();
+    if (!backendExecutable) {
+      const msg = `Backend executable not found. Expected under Resources/backend or dist/.`;
+      console.error(msg);
+      return reject(new Error(msg));
     }
 
     const args = ['--path', dirPath];
@@ -218,29 +280,8 @@ function runOrganizer(dirPath, operation = 'plan', options = {}) {
 
     console.log('Python command args:', args);
 
-    // Use virtual environment Python if available, fallback to system python
-    // This logic is now replaced by directly calling the bundled backendExecutable
-    // const scriptRoot = path.join(__dirname, '..'); // project root
-    // const venvPython = path.join(scriptRoot, 'venv', 'bin', 'python3');
-    
-    // let pythonExecutable;
-    // try {
-    //   // Check if virtual environment Python exists
-    //   if (fs.existsSync(venvPython)) {
-    //     pythonExecutable = venvPython;
-    //     console.log('Using venv Python:', venvPython);
-    //   } else {
-    //     // Fallback to system python
-    //     pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-    //     console.log('Using system Python:', pythonExecutable);
-    //   }
-    // } catch (error) {
-    //   console.error('Error checking Python executable:', error);
-    //   pythonExecutable = process.platform === 'win32' ? 'python' : 'python3';
-    // }
-
     // Set the current working directory for the Python process
-    const pythonCwd = app.isPackaged ? path.dirname(backendExecutable) : path.join(__dirname, '..');
+    const pythonCwd = path.dirname(backendExecutable);
 
     const pythonProcess = spawn(backendExecutable, args, {
       cwd: pythonCwd,

@@ -19,8 +19,9 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="bg-gradient">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg navbar-glass">
+    <nav class="navbar navbar-expand-lg navbar-glass" role="navigation" aria-label="Primary">
       <div class="container-fluid px-4">
         <div class="navbar-brand d-flex align-items-center">
           <div class="app-icon me-3">
@@ -33,19 +34,28 @@
         </div>
         
         <div class="navbar-nav flex-row gap-3">
-          <button id="help-btn" class="btn btn-ghost btn-sm">
-            <i class="bi bi-question-circle me-1"></i>Help
+          <button id="sidebar-toggle-btn" class="btn btn-ghost btn-sm" data-bs-toggle="tooltip" title="Toggle Sidebar" aria-label="Toggle Sidebar" aria-controls="side-drawer" aria-expanded="false">
+            <i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i>Sidebar
           </button>
-          <button id="settings-btn" class="btn btn-ghost btn-sm">
-            <i class="bi bi-gear me-1"></i>Settings
+          <button id="help-btn" class="btn btn-ghost btn-sm" data-bs-toggle="tooltip" title="Help (Shift+?)" aria-label="Open Help">
+            <i class="bi bi-question-circle me-1" aria-hidden="true"></i>Help
+          </button>
+           <button id="command-palette-btn" class="btn btn-ghost btn-sm" data-bs-toggle="tooltip" title="Command Palette (Cmd/Ctrl+K)" aria-label="Command Palette">
+            <i class="bi bi-command me-1" aria-hidden="true"></i>Command
+          </button>
+          <button id="theme-toggle-btn" class="btn btn-ghost btn-sm" data-bs-toggle="tooltip" title="Theme: Auto/Light/Dark (T)" aria-label="Toggle Theme">
+            <i class="bi bi-moon-stars me-1" aria-hidden="true"></i><span id="theme-label">Theme</span>
+          </button>
+          <button id="settings-btn" class="btn btn-ghost btn-sm" data-bs-toggle="tooltip" title="Settings (Cmd/Ctrl+,)" aria-label="Open Settings">
+            <i class="bi bi-gear me-1" aria-hidden="true"></i>Settings
           </button>
         </div>
       </div>
     </nav>
 
-    <div class="container-fluid p-0">
+    <div class="container-fluid p-0" id="main-content" role="main" tabindex="-1">
       <!-- 1. Welcome/Onboarding View -->
-      <div id="welcome-view" class="view-container">
+      <div id="welcome-view" class="view-container section">
         <noscript>
           <div class="alert alert-warning m-4">
             <h4>JavaScript Required</h4>
@@ -57,8 +67,8 @@
             <div class="welcome-icon mb-4">
               <i class="bi bi-magic"></i>
             </div>
-            <h1 class="display-4 fw-bold mb-3">Welcome to Smart Organizer</h1>
-            <p class="lead mb-5">
+            <h1 class="display-4 fw-bold mb-2 section-title">Welcome to Smart Organizer</h1>
+            <p class="lead mb-5 section-subtitle">
               Transform chaos into order with AI-powered file organization that understands your intent.
             </p>
             
@@ -99,20 +109,20 @@
       </div>
 
       <!-- 2. Directory Selection View -->
-      <div id="directory-view" class="view-container d-none">
+      <div id="directory-view" class="view-container d-none section">
         <div class="container py-5">
           <div class="row justify-content-center">
             <div class="col-lg-8">
-              <div class="step-header mb-5">
+              <div class="step-header mb-5 section-header">
                 <div class="step-indicator">
                   <span class="step-number">1</span>
                 </div>
-                <h2 class="h1 fw-bold mb-3">Choose Your Folder</h2>
-                <p class="lead">Select the folder you'd like to organize. We'll scan and analyze all files within it.</p>
+                <h2 class="h1 fw-bold mb-2 section-title">Choose Your Folder</h2>
+                <p class="lead section-subtitle">Select the folder you'd like to organize. We'll scan and analyze all files within it.</p>
           </div>
               
               <div class="folder-selector">
-                <div class="folder-drop-zone" id="folder-drop-zone">
+                <div class="folder-drop-zone surface-card" id="folder-drop-zone">
                   <i class="bi bi-folder-plus"></i>
                   <h4>Drop a folder here</h4>
                   <p>or</p>
@@ -121,7 +131,7 @@
                   </button>
         </div>
 
-                <div id="selected-folder-info" class="selected-folder-info d-none">
+                <div id="selected-folder-info" class="selected-folder-info surface-card d-none">
                   <div class="d-flex align-items-center">
                     <i class="bi bi-folder-fill text-primary me-3"></i>
                     <div class="flex-grow-1">
@@ -133,7 +143,7 @@
                 </div>
               </div>
 
-              <div class="d-flex justify-content-between mt-5">
+              <div class="d-flex justify-content-between mt-5 actions-row">
                 <button id="back-to-welcome-btn" class="btn btn-ghost">
                   <i class="bi bi-arrow-left me-2"></i>Back
                 </button>
@@ -147,20 +157,20 @@
       </div>
 
       <!-- 3. Organization Method View -->
-      <div id="method-view" class="view-container d-none">
+      <div id="method-view" class="view-container d-none section">
         <div class="container py-5">
           <div class="row justify-content-center">
             <div class="col-lg-10">
-              <div class="step-header mb-5">
+              <div class="step-header mb-5 section-header">
                 <div class="step-indicator">
                   <span class="step-number">2</span>
                 </div>
-                <h2 class="h1 fw-bold mb-3">How Should We Organize?</h2>
-                <p class="lead">Choose your preferred organization method. You can always customize further.</p>
+                <h2 class="h1 fw-bold mb-2 section-title">How Should We Organize?</h2>
+                <p class="lead section-subtitle">Choose your preferred organization method. You can always customize further.</p>
               </div>
               
               <!-- Organization Method Tabs -->
-              <div class="method-tabs mb-4">
+              <div class="method-tabs mb-4 surface-card p-2">
                 <nav>
                   <div class="nav nav-pills nav-fill" id="method-tab" role="tablist">
                     <button class="nav-link active" id="quick-tab" data-bs-toggle="pill" data-bs-target="#quick-method">
@@ -186,7 +196,7 @@
               <div class="tab-content" id="method-content">
                 <!-- Quick Method -->
                 <div class="tab-pane fade show active" id="quick-method">
-                  <div class="method-card">
+                  <div class="method-card surface-card">
                     <div class="text-center py-4">
                       <i class="bi bi-lightning-charge method-icon text-warning"></i>
                       <h4 class="mt-3 mb-3">AI-Powered Smart Organization</h4>
@@ -220,7 +230,7 @@
                 
                 <!-- Custom Prompt Method -->
                 <div class="tab-pane fade" id="custom-method">
-                  <div class="method-card">
+                  <div class="method-card surface-card">
                     <div class="py-4">
                       <div class="text-center mb-4">
                         <i class="bi bi-chat-dots method-icon text-primary"></i>
@@ -279,7 +289,7 @@
                 
                 <!-- Template Method -->
                 <div class="tab-pane fade" id="template-method">
-                  <div class="method-card">
+                  <div class="method-card surface-card">
                     <div class="py-4">
                       <div class="text-center mb-4">
                         <i class="bi bi-grid-3x3-gap method-icon text-success"></i>
@@ -365,7 +375,7 @@
                 
                 <!-- Advanced Method -->
                 <div class="tab-pane fade" id="advanced-method">
-                  <div class="method-card">
+                  <div class="method-card surface-card">
                     <div class="py-4">
                       <div class="text-center mb-4">
                         <i class="bi bi-sliders method-icon text-info"></i>
@@ -449,7 +459,7 @@
                 </div>
               </div>
               
-              <div class="d-flex justify-content-between mt-5">
+              <div class="d-flex justify-content-between mt-5 actions-row">
                 <button id="back-to-directory-btn" class="btn btn-ghost">
                   <i class="bi bi-arrow-left me-2"></i>Back
                 </button>
@@ -463,11 +473,11 @@
       </div>
 
       <!-- 4. Processing View (Enhanced) -->
-      <div id="processing-view" class="view-container d-none">
+      <div id="processing-view" class="view-container d-none section">
         <div class="container py-5">
           <div class="row justify-content-center">
             <div class="col-lg-8">
-              <div class="processing-card">
+              <div class="processing-card surface-card">
                 <div class="text-center mb-4">
                   <div class="processing-spinner">
                     <div class="spinner-ring"></div>
@@ -481,7 +491,7 @@
                   <div class="progress mb-3" style="height: 20px;">
                     <div class="progress-bar progress-bar-striped progress-bar-animated" 
                          id="processing-progress" 
-                         role="progressbar" 
+                         role="progressbar" aria-valuemin="0" aria-valuemax="100"
                          style="width: 0%">
                     </div>
                   </div>
@@ -520,8 +530,9 @@
       </div>
 
       <!-- 5. Results Preview View (Enhanced) -->
-      <div id="results-view" class="view-container d-none">
+      <div id="results-view" class="view-container d-none section">
         <div class="container-fluid py-4">
+          <div id="live-region" class="visually-hidden" aria-live="polite"></div>
           <div class="results-header mb-4">
             <div class="container">
               <div class="row align-items-center">
@@ -547,7 +558,7 @@
           <!-- Enhanced filtering and controls -->
           <div class="results-controls mb-4">
             <div class="container">
-              <div class="control-panel">
+              <div class="control-panel surface-card">
                 <div class="row align-items-center mb-3">
                   <div class="col-lg-6">
                     <div class="search-section">
@@ -608,7 +619,7 @@
                           <input type="radio" class="btn-check" name="confidence-filter" id="confidence-medium-new" value="medium">
                           <label class="btn btn-outline-secondary" for="confidence-medium-new">50-80%</label>
                           <input type="radio" class="btn-check" name="confidence-filter" id="confidence-low-new" value="low">
-                          <label class="btn btn-outline-secondary" for="confidence-low-new"><50%</label>
+                          <label class="btn btn-outline-secondary" for="confidence-low-new">&lt;50%</label>
                         </div>
                       </div>
                       
@@ -658,28 +669,57 @@
           <!-- Results content with multiple view modes -->
           <div class="results-content">
             <div class="container">
-              <div class="plan-summary mb-4" id="plan-summary-new"></div>
+              <div class="plan-summary mb-4 surface-card" id="plan-summary-new">
+                <div class="row g-4">
+                  <div class="col-md-3">
+                    <div class="summary-stat">
+                      <div class="stat-number" id="total-files-display">0</div>
+                      <div class="stat-label">Total Files</div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="summary-stat">
+                      <div class="stat-number" id="categories-display">0</div>
+                      <div class="stat-label">Categories</div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="summary-stat">
+                      <div class="stat-number" id="duplicates-display">0</div>
+                      <div class="stat-label">Duplicates</div>
+                    </div>
+                  </div>
+                  <div class="col-md-3">
+                    <div class="summary-stat">
+                      <div class="stat-number" id="confidence-display">0%</div>
+                      <div class="stat-label">Avg Confidence</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               
-              <!-- Table View -->
+              <!-- Table View (replaced with fast windowed list) -->
               <div id="table-view" class="view-mode active">
                 <div class="results-table-container">
-                  <div class="table-responsive">
-                    <table class="table results-table">
-                      <thead>
-                        <tr>
-                          <th style="width: 40px;">
-                            <input class="form-check-input" type="checkbox" id="select-all-checkbox-new">
-                    </th>
-                          <th style="width: 200px;">File</th>
-                          <th style="width: 120px;">Priority/Conf.</th>
-                          <th style="width: 350px;">Movement: FROM → TO</th>
-                          <th style="width: 300px;">AI Reasoning</th>
-                  </tr>
-                </thead>
-                      <tbody id="results-table-body">
-                        <!-- Populated by JS -->
-                </tbody>
-              </table>
+                  <div class="results-list">
+                    <div class="list-header">
+                      <div class="col checkbox">
+                        <input class="form-check-input" type="checkbox" id="select-all-checkbox-new">
+                      </div>
+                      <div class="col file">
+                        <i class="bi bi-file-earmark me-2"></i>File Details
+                      </div>
+                      <div class="col priority">
+                        <i class="bi bi-star me-2"></i>Priority & Confidence
+                      </div>
+                      <div class="col movement">
+                        <i class="bi bi-arrow-right me-2"></i>Organization Plan
+                      </div>
+                      <div class="col reasoning">
+                        <i class="bi bi-brain me-2"></i>AI Analysis
+                      </div>
+                    </div>
+                    <div id="list-viewport" class="list-viewport" role="list" aria-label="Files"></div>
                   </div>
                 </div>
               </div>
@@ -698,7 +738,7 @@
                 </div>
               </div>
               
-              <div class="results-footer mt-4">
+              <div class="results-footer mt-4 surface-card">
                 <div class="row align-items-center">
                   <div class="col-lg-6">
                     <p id="selection-summary" class="mb-0 text-muted">
@@ -721,11 +761,11 @@
       </div>
 
       <!-- 6. Success View (Enhanced) -->
-      <div id="success-view" class="view-container d-none">
+      <div id="success-view" class="view-container d-none section">
         <div class="container py-5">
           <div class="row justify-content-center">
             <div class="col-lg-8">
-              <div class="success-card">
+              <div class="success-card surface-card">
                 <div class="text-center mb-5">
                   <div class="success-icon mb-4">
                     <i class="bi bi-check-circle-fill"></i>
@@ -782,6 +822,35 @@
         </div>
       </div>
     </div>
+
+    <!-- App Sidebar (responsive) -->
+    <aside id="side-drawer" class="side-drawer" aria-label="Quick navigation" aria-hidden="true">
+      <div class="side-drawer-header d-flex align-items-center justify-content-between px-3 py-2">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-magic"></i>
+          <strong>Smart Organizer</strong>
+        </div>
+        <button id="sidebar-close-btn" class="btn btn-ghost btn-sm" aria-label="Close Sidebar">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="side-drawer-content">
+        <div class="px-3 mb-3 text-muted small">Quick Actions</div>
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item"><button class="btn btn-link p-0" onclick="organizer?.selectFolder()"><i class="bi bi-folder2-open me-2"></i>Select Folder</button></li>
+          <li class="list-group-item"><button class="btn btn-link p-0" onclick="organizer?.startOrganization()"><i class="bi bi-play-circle me-2"></i>Start Organization</button></li>
+          <li class="list-group-item"><button class="btn btn-link p-0" onclick="organizer?.approveHighConfidence()"><i class="bi bi-check-circle me-2"></i>Approve High Confidence</button></li>
+          <li class="list-group-item"><button class="btn btn-link p-0" onclick="organizer?.exportPlan()"><i class="bi bi-download me-2"></i>Export Plan</button></li>
+          <li class="list-group-item"><button class="btn btn-link p-0" onclick="organizer?.openCommandPalette()"><i class="bi bi-command me-2"></i>Command Palette</button></li>
+        </ul>
+        <div class="px-3 mt-4 mb-2 text-muted small">Theme</div>
+        <div class="px-3 d-flex gap-2">
+          <button class="btn btn-outline-secondary btn-sm" onclick="organizer?.applyThemeMode('auto')">Auto</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="organizer?.applyThemeMode('light')">Light</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="organizer?.applyThemeMode('dark')">Dark</button>
+        </div>
+      </div>
+    </aside>
 
     <!-- Help Modal -->
     <div class="modal fade" id="helpModal" tabindex="-1">
@@ -861,6 +930,31 @@
             <button type="button" class="btn btn-primary" id="approve-this-move">
               <i class="bi bi-check-circle me-2"></i>Approve This Move
             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Command Palette Modal -->
+    <div class="modal fade" id="commandPalette" tabindex="-1" aria-labelledby="commandPaletteLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content command-palette-modal">
+          <div class="modal-header">
+            <h5 class="modal-title" id="commandPaletteLabel"><i class="bi bi-command me-2"></i>Command Palette</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="input-group mb-3">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="text" class="form-control" id="command-search" placeholder="Type a command..." aria-label="Search commands">
+            </div>
+            <div id="command-list" class="list-group command-list" role="listbox" aria-label="Commands">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+          <div class="modal-footer d-flex justify-content-between">
+            <small class="text-muted">Use ↑ ↓ to navigate, Enter to run • Esc to close</small>
+            <small class="text-muted">Cmd/Ctrl+K</small>
           </div>
         </div>
       </div>
