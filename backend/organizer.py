@@ -66,7 +66,7 @@ except ImportError:
 # --- Enhanced Constants ---
 AI_MODELS = {
     'gemini': {
-        'model': 'gemini-2.5-flash-preview-05-20',
+        'model': 'gemini-2.5-flash-lite',
         'max_tokens': 1000000,
         'cost_per_1k': 0.01,
         'supports_images': True
@@ -335,23 +335,25 @@ class EnhancedDirectoryScanner:
         logger.info(f"Enhanced scanner initialized for {self.root} with {max_workers} workers")
     
     async def scan_async(self, progress_callback: Callable[[int, int, str], None] | None = None) -> List[EnhancedFileInfo]:
-        """High-performance async directory scanning with intelligent filtering."""
+        """High-performance async directory scanning with intelligent filtering.
+        NOTE: Restricted to TOP-LEVEL FILES ONLY (no recursion).
+        """
         self.metrics.processing_stages['scan_start'] = time.time()
         logger.info(f"Starting async scan of {self.root}")
         
         files = []
         
-        # Phase 1: Fast path enumeration
+        # Phase 1: Fast path enumeration (TOP-LEVEL FILES ONLY)
         all_paths = []
         for root, dirs, filenames in os.walk(self.root, followlinks=self.follow_symlinks):
-            # Smart directory filtering
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRECTORIES and not d.startswith('.')]
-            
+            # Do not descend into subdirectories; only process selected folder files
+            dirs[:] = []
             for filename in filenames:
                 file_path = Path(root) / filename
                 if await self._should_process_file_async(file_path):
                     all_paths.append(file_path)
-        
+            break  # single iteration for top-level only
+
         logger.info(f"Found {len(all_paths)} candidate files")
         
         # Phase 2: Parallel processing in batches
@@ -665,7 +667,7 @@ class DirectoryScanner:
         logger.warning("Using legacy DirectoryScanner. Consider upgrading to EnhancedDirectoryScanner.")
 
     def scan(self, progress_callback: Callable[[int, int, str], None] | None = None) -> List[FileInfo]:
-        """Scan directory and gather file info."""
+        """Scan directory and gather file info (TOP-LEVEL FILES ONLY)."""
         # Directories to skip entirely
         SKIP_DIRECTORIES = {
             'node_modules', '.git', '.svn', '.hg', '__pycache__', 
@@ -679,15 +681,16 @@ class DirectoryScanner:
         }
         
         files = []
-        all_files = list(self.root.rglob('*'))
+        # Only immediate children (no recursion)
+        all_files = list(self.root.glob('*'))
         
         for file_path in tqdm(all_files, desc="Scanning files", unit="file", leave=False, file=sys.stderr):
-            # Skip if any parent directory is in skip list
+            # Skip directories and anything in skip list
+            if file_path.is_dir():
+                continue
             if any(part.name in SKIP_DIRECTORIES for part in file_path.parents):
                 continue
-            
-            # Skip the file itself if it's a directory or shouldn't be scanned
-            if file_path.is_dir() or not self._should_scan_file(file_path):
+            if not self._should_scan_file(file_path):
                 continue
             
             if progress_callback:
@@ -795,10 +798,13 @@ class GeminiClassifier:
         if genai is None or Image is None:
             raise RuntimeError("Required packages not found. Run 'pip install google-generativeai pillow'")
         
-        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        from .config import config
+        api_key = api_key or config.ai.gemini_api_key
         if not api_key:
             raise ValueError("GEMINI_API_KEY not set.")
         
+        masked = f"{api_key[:4]}...{api_key[-4:]} (len={len(api_key)})"
+        logger.info(f"GeminiClassifier using API key: {masked}")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(AI_MODELS['gemini']['model'])
 
@@ -880,6 +886,15 @@ class GeminiClassifier:
         
         files_to_process = [f for f in files_needing_api if f.metadata.get("extension") in all_supported_extensions]
         files_to_fallback = [f for f in files_needing_api if f not in files_to_process]
+
+        # Hard cap AI volume per run to prevent API storms (fallback for the rest)
+        try:
+            max_ai = int(os.getenv("AI_MAX_FILES", "250"))
+        except ValueError:
+            max_ai = 250
+        if len(files_to_process) > max_ai:
+            files_to_fallback.extend(files_to_process[max_ai:])
+            files_to_process = files_to_process[:max_ai]
 
         total_batches = (len(files_to_process) + BATCH_SIZE - 1) // BATCH_SIZE if files_to_process else 0
 
@@ -1009,14 +1024,8 @@ Respond with ONLY the JSON array, no other text:
     def _parse_batch_response(self, response: genai.GenerationResponse, batch_files: List[FileInfo]):
         try:
             text = response.text.strip()
-            # Clean the response to be valid JSON
-            start = text.find('[')
-            end = text.rfind(']')
-            if start == -1 or end == -1:
-                raise json.JSONDecodeError("No JSON array found in response", text, 0)
-            
-            json_text = text[start:end+1]
-            data = json.loads(json_text)
+            from .json_utils import extract_json_array
+            data = extract_json_array(text)
 
             if not isinstance(data, list):
                  raise TypeError("Response is not a JSON list.")
@@ -1122,10 +1131,13 @@ class CustomPromptClassifier:
         if genai is None:
             raise RuntimeError("Required packages not found. Run 'pip install google-generativeai'")
         
-        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        from .config import config
+        api_key = api_key or config.ai.gemini_api_key
         if not api_key:
             raise ValueError("GEMINI_API_KEY not set.")
         
+        masked = f"{api_key[:4]}...{api_key[-4:]} (len={len(api_key)})"
+        logger.info(f"CustomPromptClassifier using API key: {masked}")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(AI_MODELS['gemini']['model'])
         self.user_prompt = ""
@@ -1343,13 +1355,8 @@ Respond with ONLY the JSON array, no other text:
         """Parse enhanced AI response with custom fields."""
         try:
             text = response.text.strip()
-            start = text.find('[')
-            end = text.rfind(']')
-            if start == -1 or end == -1:
-                raise json.JSONDecodeError("No JSON array found in response", text, 0)
-            
-            json_text = text[start:end+1]
-            data = json.loads(json_text)
+            from .json_utils import extract_json_array
+            data = extract_json_array(text)
 
             if not isinstance(data, list):
                 raise TypeError("Response is not a JSON list.")
@@ -2076,10 +2083,13 @@ class IntelligentAIClassifier:
         if genai is None:
             raise RuntimeError("Required packages not found. Run 'pip install google-generativeai'")
         
-        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        from .config import config
+        api_key = api_key or config.ai.gemini_api_key
         if not api_key:
             raise ValueError("GEMINI_API_KEY not set.")
         
+        masked = f"{api_key[:4]}...{api_key[-4:]} (len={len(api_key)})"
+        logger.info(f"IntelligentAIClassifier using API key: {masked}")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(AI_MODELS['gemini']['model'])
         self.cache: SQLiteCache | None = SQLiteCache(Path("smart_organizer_intelligent_cache.db")) if enable_cache else None

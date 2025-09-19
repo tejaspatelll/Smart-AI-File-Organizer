@@ -9,17 +9,23 @@ If --apply is omitted, a dry-run JSON plan is printed instead of moving files.
 """
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import argparse
 import json
 import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
-from dotenv import load_dotenv
 
 from backend.organizer import DirectoryScanner, EnhancedDirectoryScanner, GeminiClassifier, FileOrganizer, CustomPromptClassifier, IntelligentAIClassifier, EnhancedFileInfo, FileInfo
+from backend.ai_providers import ai_system
+from backend.config import config
+from backend.SmartPlanner import SmartPlanner
+from backend.models import MovePlanItem
 
-load_dotenv()
+# load_dotenv()
 
 class ProgressReporter:
     """A simple class to report progress back to the Electron app via stderr."""
@@ -49,6 +55,44 @@ class ProgressReporter:
         print(json.dumps(progress_data), file=sys.stderr)
 
 
+def _build_structure_summary(root: Path, max_depth: int = 4, max_entries: int = 10000) -> dict:
+    """Recursively summarize the selected directory for AI context.
+
+    Includes folder graph, file counts, and extension distribution.
+    Bounded by max_entries to protect against huge trees.
+    """
+    root = root.expanduser().resolve()
+    summary: Dict[str, Any] = {"root": str(root), "folders": {}, "total_files": 0, "ext_counts": {}}
+    entries = 0
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        try:
+            rel_dir = str(Path(dirpath).relative_to(root)) or "."
+        except Exception:
+            rel_dir = "."
+        if rel_dir not in summary["folders"]:
+            summary["folders"][rel_dir] = {"subfolders": [], "files": 0, "ext_counts": {}}
+
+        # Record subfolders (relative)
+        for d in dirnames:
+            sub_rel = str(Path(rel_dir) / d) if rel_dir != "." else d
+            summary["folders"][rel_dir]["subfolders"].append(sub_rel)
+
+        # Record files and extension counts
+        for fn in filenames:
+            ext = (Path(fn).suffix or "").lower()
+            summary["folders"][rel_dir]["files"] += 1
+            summary["folders"][rel_dir]["ext_counts"][ext] = summary["folders"][rel_dir]["ext_counts"].get(ext, 0) + 1
+            summary["total_files"] += 1
+            summary["ext_counts"][ext] = summary["ext_counts"].get(ext, 0) + 1
+
+            entries += 1
+            if entries >= max_entries:
+                return summary
+
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smart File Organizer Backend")
     parser.add_argument("--path", required=True, help="Directory to organize")
@@ -60,6 +104,7 @@ def main() -> None:
     parser.add_argument("--prompt", type=str, help="Custom organization prompt")
     parser.add_argument("--template", type=str, choices=["creative", "business", "student", "personal"], help="Organization template")
     parser.add_argument("--intelligent", action="store_true", help="Use intelligent AI classifier with confidence-based decisions and folder preservation")
+    parser.add_argument("--policies", type=str, help="Path to JSON file with organization policies")
     args = parser.parse_args()
 
     root_path = Path(args.path).expanduser().resolve()
@@ -110,65 +155,136 @@ def main() -> None:
         files = legacy_scanner.scan(progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "scan"))
         scanner = legacy_scanner  # For compatibility with duplicate detection
 
-    classifier = None
-    if os.getenv("GEMINI_API_KEY"):
-        try:
-            progress_reporter.report(1, 1, "Starting AI classification...", "classify")
-            
-            # Use IntelligentAIClassifier if --intelligent flag is specified
-            if args.intelligent:
-                classifier = IntelligentAIClassifier()
-                print("🧠 Using Intelligent AI Classifier with confidence-based decisions and folder preservation", file=sys.stderr)
-                
-                # Analyze existing folder structure for intelligent decisions
-                print("📁 Analyzing existing folder structure for preservation...", file=sys.stderr)
-                existing_folders = {}
-                if hasattr(scanner, 'get_scan_metrics'):
-                    # For enhanced scanner, get folder analysis from the scanner
-                    folder_analysis = {
-                        'existing_folders': set(f.path.parent.name for f in files if f.path.parent.name != f.path.parents[1].name),
-                        'folder_file_counts': {},
-                        'well_organized_folders': set(),
-                        'preservation_candidates': set()
-                    }
-                    
-                    # Count files per folder
-                    for f in files:
-                        folder = f.path.parent.name
-                        if folder != f.path.parents[1].name:  # Not in root
-                            folder_analysis['folder_file_counts'][folder] = folder_analysis['folder_file_counts'].get(folder, 0) + 1
-                    
-                    # Mark well-organized folders (5+ files)
-                    for folder, count in folder_analysis['folder_file_counts'].items():
-                        if count >= 5:
-                            folder_analysis['well_organized_folders'].add(folder)
-                            folder_analysis['preservation_candidates'].add(folder)
-                    
-                    existing_folders = folder_analysis
-                    print(f"📊 Folder analysis: {len(folder_analysis['preservation_candidates'])} folders marked for preservation", file=sys.stderr)
-                
-                files = classifier.classify_with_intelligence(files, existing_folders, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
-            # Use CustomPromptClassifier if prompt or template specified
-            elif args.prompt or args.template:
-                classifier = CustomPromptClassifier()
-                if args.prompt:
-                    classifier.set_custom_prompt(args.prompt)
-                    print(f"🎯 Using custom prompt: '{args.prompt[:50]}{'...' if len(args.prompt) > 50 else ''}'", file=sys.stderr)
-                if args.template:
-                    classifier.set_organization_template(args.template)
-                    print(f"📋 Using template: {args.template}", file=sys.stderr)
-                files = classifier.classify_batch_with_prompt(files, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
-            else:
-                classifier = GeminiClassifier()
-                files = classifier.classify_batch(files, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
-        except Exception as e:
-            print(f"Warning: AI Classification failed: {e}", file=sys.stderr)
+    # Unified provider path (preferred)
+    try:
+        progress_reporter.report(1, 1, "Starting AI classification...", "classify")
+        import asyncio
+        # Initialize providers once per run
+        asyncio.run(ai_system.initialize())
+
+        # Build context for providers
+        structure = _build_structure_summary(root_path, max_depth=4)
+        context: Dict[str, Any] = {"existing_structure": structure, "metadata_only": True, "confidence_threshold": config.ai.confidence_threshold}
+        if args.prompt:
+            context["user_prompt"] = args.prompt
+            print(f"🎯 Using custom prompt: '{args.prompt[:50]}{'...' if len(args.prompt) > 50 else ''}'", file=sys.stderr)
+        if args.template:
+            context["template"] = args.template
+            print(f"📋 Using template: {args.template}", file=sys.stderr)
+        if args.policies:
+            try:
+                with open(Path(args.policies).expanduser().resolve(), 'r', encoding='utf-8') as pf:
+                    context["policies"] = json.load(pf)
+                print("🛡️  Policies loaded and applied.", file=sys.stderr)
+            except Exception as pe:
+                print(f"Warning: Failed to load policies file: {pe}", file=sys.stderr)
+
+        # Convert EnhancedFileInfo/FileInfo to models.FileInfo
+        from backend.models import FileInfo as ModelFileInfo, FileMetadata
+        model_files = []
+        for f in files:
+            meta = FileMetadata(
+                name=f.metadata.get("name", f.path.name),
+                extension=f.metadata.get("extension", ""),
+                size_bytes=f.metadata.get("size", f.metadata.get("size_bytes", 0)),
+                created_timestamp=f.metadata.get("created_ts", f.metadata.get("created", 0) or 0),
+                modified_timestamp=f.metadata.get("modified_ts", f.metadata.get("modified", 0) or 0),
+                path=f.path,
+            )
+            model_files.append(ModelFileInfo(path=f.path, metadata=meta))
+
+        # Classify via unified providers (batched with structure context)
+        result = asyncio.run(ai_system.classify_files(model_files, context))
+
+        # Map results back into original FileInfo objects for planner compatibility
+        ai_map = {r.file_path.name: r for r in result.results}
+        for f in files:
+            r = ai_map.get(f.path.name)
+            if not r:
+                continue
+            f.category = r.category
+            f.suggestion = r.suggestion
+            f.metadata["ai_confidence"] = r.confidence
+            f.metadata["ai_reasoning"] = r.reasoning
+            f.metadata["ai_priority"] = r.priority
+            f.metadata["ai_tags"] = r.tags
+        print(f"🤖 AI provider: {result.provider.value if hasattr(result, 'provider') else 'multi'} | files: {len(result.results)}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: Unified AI classification failed: {e}. Falling back to legacy path.", file=sys.stderr)
+        # Legacy fallback path retains previous behavior
+        classifier = None
+        if os.getenv("GEMINI_API_KEY"):
+            try:
+                # Use IntelligentAIClassifier if --intelligent flag is specified
+                if args.intelligent:
+                    classifier = IntelligentAIClassifier()
+                    print("🧠 Using Intelligent AI Classifier with confidence-based decisions and folder preservation", file=sys.stderr)
+                    files = classifier.classify_with_intelligence(files, {}, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
+                # Use CustomPromptClassifier if prompt or template specified
+                elif args.prompt or args.template:
+                    classifier = CustomPromptClassifier()
+                    if args.prompt:
+                        classifier.set_custom_prompt(args.prompt)
+                    if args.template:
+                        classifier.set_organization_template(args.template)
+                    files = classifier.classify_batch_with_prompt(files, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
+                else:
+                    classifier = GeminiClassifier()
+                    files = classifier.classify_batch(files, progress_callback=lambda c, t, m: progress_reporter.report(c, t, m, "classify"))
+            except Exception as e2:
+                print(f"Warning: AI Classification failed: {e2}", file=sys.stderr)
     
-    # Build plan with duplicate detection if requested
-    if args.include_duplicates:
-        organizer.build_plan(files, scanner)
-    else:
-        organizer.build_plan(files)
+    # Use SmartPlanner to ensure consistent AI-driven moves
+    try:
+        planner = SmartPlanner(root_path)
+        # Convert to models.FileInfo list if not already
+        from backend.models import FileInfo as ModelFileInfo, FileMetadata
+        model_files = []
+        for f in files:
+            if isinstance(f, ModelFileInfo):
+                model_files.append(f)
+            else:
+                meta = FileMetadata(
+                    name=getattr(f, 'metadata', {}).get('name', f.path.name) if isinstance(getattr(f, 'metadata', {}), dict) else getattr(f.metadata, 'name', f.path.name),
+                    extension=getattr(f, 'metadata', {}).get('extension', '') if isinstance(getattr(f, 'metadata', {}), dict) else getattr(f.metadata, 'extension', ''),
+                    size_bytes=getattr(f, 'metadata', {}).get('size', getattr(getattr(f, 'metadata', {}), 'size_bytes', 0)) if isinstance(getattr(f, 'metadata', {}), dict) else getattr(f.metadata, 'size', getattr(f.metadata, 'size_bytes', 0)),
+                    created_timestamp=getattr(f, 'metadata', {}).get('created_ts', getattr(getattr(f, 'metadata', {}), 'created_timestamp', 0)) if isinstance(getattr(f, 'metadata', {}), dict) else getattr(f.metadata, 'created_ts', getattr(f.metadata, 'created_timestamp', 0)),
+                    modified_timestamp=getattr(f, 'metadata', {}).get('modified_ts', getattr(getattr(f, 'metadata', {}), 'modified_timestamp', 0)) if isinstance(getattr(f, 'metadata', {}), dict) else getattr(f.metadata, 'modified_ts', getattr(f.metadata, 'modified_timestamp', 0)),
+                    path=f.path,
+                )
+                mf = ModelFileInfo(path=f.path, metadata=meta)
+                # carry over AI results if present
+                if getattr(f, 'category', None):
+                    mf.set_category(getattr(f, 'category'))
+                mf.suggestion = getattr(f, 'suggestion', None)
+                mf.confidence = float(getattr(f, 'metadata', {}).get('ai_confidence', 0.0)) if isinstance(getattr(f, 'metadata', {}), dict) else float(getattr(getattr(f, 'metadata', {}), 'ai_confidence', 0.0))
+                model_files.append(mf)
+
+        org_plan = planner.build_plan(model_files)
+        # Keep duplicate handling if requested by merging plans
+        if args.include_duplicates:
+            # Build organizer plan for duplicates
+            organizer.build_plan(files, scanner)
+            # Merge: keep duplicates from organizer into org_plan
+            for item in organizer.plan:
+                if item.is_duplicate:
+                    org_plan.add_move(MovePlanItem(
+                        source=item.source,
+                        destination=item.destination,
+                        priority=item.priority,
+                        confidence=item.confidence,
+                        reason=item.reason,
+                    ))
+
+        # Export frontend compatible array
+        plan_array = SmartPlanner.to_frontend_array(org_plan)
+    except Exception:
+        # Fallback to legacy planner
+        if args.include_duplicates:
+            organizer.build_plan(files, scanner)
+        else:
+            organizer.build_plan(files)
+        plan_array = json.loads(organizer.export_plan_json())
 
     if args.summary:
         # Show only summary
@@ -188,7 +304,7 @@ def main() -> None:
                 print(f"     - {category}: {count} files", file=sys.stderr)
     else:
         # Print full JSON plan to stdout
-        print(organizer.export_plan_json())
+        print(json.dumps(plan_array, indent=2))
 
 
 if __name__ == "__main__":

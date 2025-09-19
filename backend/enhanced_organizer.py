@@ -35,8 +35,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Internal imports
-from .cache import SQLiteCache
+from .enhanced_cache import smart_cache
 from .utils import read_basic_metadata, extract_text_from_pdf, extract_text_from_docx
+from .config import config
 
 # Try to import optional dependencies
 try:
@@ -70,7 +71,7 @@ SUPPORTED_AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '
 # AI Provider configurations
 AI_MODELS = {
     'gemini': {
-        'model': 'gemini-2.5-flash-preview-05-20',
+        'model': 'gemini-2.5-flash-lite',
         'max_tokens': 1000000,
         'cost_per_1k': 0.01,
         'supports_images': True
@@ -190,7 +191,8 @@ class AdvancedAIProvider:
         self.primary_provider = None
         self.fallback_providers = []
         self.metrics = ProcessingMetrics()
-        self.cache = SQLiteCache(Path("smart_organizer_enhanced_cache.db"))
+        # Use global smart_cache for consistency across backend
+        self.cache = smart_cache
         
         # Initialize available providers
         self._initialize_providers()
@@ -198,26 +200,31 @@ class AdvancedAIProvider:
     def _initialize_providers(self):
         """Initialize all available AI providers."""
         # Gemini
-        if genai and os.getenv('GEMINI_API_KEY'):
+        if genai and config.ai.gemini_api_key:
             try:
-                genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-                self.providers['gemini'] = genai.GenerativeModel(AI_MODELS['gemini']['model'])
+                # Mask the key for logs
+                key = config.ai.gemini_api_key or ""
+                masked = f"{key[:4]}...{key[-4:]} (len={len(key)})" if key else "<none>"
+                logger.info(f"AdvancedAIProvider (gemini) using API key: {masked}")
+                genai.configure(api_key=config.ai.gemini_api_key)
+                model_name = config.ai.gemini_model or AI_MODELS['gemini']['model']
+                self.providers['gemini'] = genai.GenerativeModel(model_name)
                 logger.info("Gemini provider initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize Gemini: {e}")
         
         # OpenAI
-        if openai and os.getenv('OPENAI_API_KEY'):
+        if openai and config.ai.openai_api_key:
             try:
-                self.providers['openai'] = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+                self.providers['openai'] = openai.AsyncOpenAI(api_key=config.ai.openai_api_key)
                 logger.info("OpenAI provider initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenAI: {e}")
         
         # Claude
-        if anthropic and os.getenv('CLAUDE_API_KEY'):
+        if anthropic and config.ai.claude_api_key:
             try:
-                self.providers['claude'] = anthropic.AsyncAnthropic(api_key=os.getenv('CLAUDE_API_KEY'))
+                self.providers['claude'] = anthropic.AsyncAnthropic(api_key=config.ai.claude_api_key)
                 logger.info("Claude provider initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize Claude: {e}")
@@ -514,7 +521,7 @@ ADVANCED ANALYSIS GUIDELINES:
                     file_info.category = item.get('category', 'Other')
                     file_info.suggestion = item.get('suggestion', 'Miscellaneous')
                     file_info.confidence = float(item.get('confidence', 0.5))
-                    file_info.reasoning = item.get('reasoning', 'AI classification')
+                    file_info.reasoning = item.get('reasoning', f"Classified as {item.get('category', 'Other')} based on file analysis")
                     file_info.tags = item.get('tags', [])
                     file_info.priority = int(item.get('priority', 3))
                     file_info.content_summary = item.get('content_summary')
@@ -575,7 +582,7 @@ ADVANCED ANALYSIS GUIDELINES:
                 file_info.suggestion = 'Miscellaneous'
             
             file_info.confidence = 0.6
-            file_info.reasoning = 'Pattern-based fallback classification'
+            file_info.reasoning = f'Organized into {file_info.suggestion} based on file type and naming patterns'
             file_info.processing_status = 'completed'
         
         return files

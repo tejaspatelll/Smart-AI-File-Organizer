@@ -43,7 +43,7 @@ class AIConfig:
     claude_api_key: Optional[str] = None
     
     # Model settings
-    gemini_model: str = "gemini-2.5-flash-preview-05-20"
+    gemini_model: str = "gemini-2.5-flash-lite"
     openai_model: str = "gpt-4o-mini"
     claude_model: str = "claude-3-haiku-20240307"
     ollama_model: str = "llama3.1:8b"
@@ -169,6 +169,10 @@ class SmartOrganizerConfig:
             self.ai.openai_api_key = api_key
         if api_key := os.getenv("CLAUDE_API_KEY"):
             self.ai.claude_api_key = api_key
+        
+        # Do NOT fallback to any hardcoded keys. If no key, leave None and rely on local/other providers.
+        if not self.ai.gemini_api_key:
+            logger.warning("GEMINI_API_KEY is not set. Gemini provider will be disabled.")
         
         # Provider selection
         if provider := os.getenv("AI_PROVIDER"):
